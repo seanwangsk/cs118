@@ -42,7 +42,8 @@ HttpHeaders::ParseHeaders (const char *buffer, size_t size)
       const char *endline = (const char *)memmem (curPos, size - (curPos-buffer), "\r\n", 2);
       if (endline == 0)
         {
-          throw ParseException ("Header line does end with \\r\\n");
+          printf("the msg is %s", buffer);
+	  throw ParseException ("Header line does end with \\r\\n");
         }
       
       if (*curPos == ' ' || *curPos == '\t') // multi-line header

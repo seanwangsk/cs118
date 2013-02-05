@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include "http-request.h"
 
 #define PORT 19989
 #define BUFFERSIZE 512
@@ -47,14 +48,19 @@ int main (int argc, char *argv[])
   }
   while(1){
   	char buf[BUFFERSIZE];
-  	if(recv(temp_sock_desc,buf,sizeof(buf),0)<0){
+  	if(recv(temp_sock_desc,buf,BUFFERSIZE,0)<0){
 		cerr<<"ERROR on reading data"<<endl;
 		exit(1);
 	}
-	if(strcmp(buf,"exit")==0){
-		break;
-	}
-	cout<<buf<<endl;
+
+	HttpRequest req;
+
+	const char *buf3 = "GET http://www.google.com:80/index.html/ HTTP/1.0\r\nContent-Length:80\r\nIf-Modified-Since: Sat, 29 Oct 1994 19:43:31 GMT\r\n\r\n";
+	req.ParseRequest(buf3, BUFFERSIZE);
+	size_t size = req.GetTotalLength();
+	char buf2[size];
+	req.FormatRequest(buf2);
+	cout<<buf2<<endl;
   }
   close(temp_sock_desc);
   close(sock_desc);
