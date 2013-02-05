@@ -9,21 +9,44 @@
 #include <stdlib.h>
 #include <string.h>
 #include "http-request.h"
+#include <netdb.h>
 
 #define PORT 19989
 #define BUFFERSIZE 512
 
 using namespace std;
 
+int create_tcp_socket(){
+    int sock;
+    if((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP))<0){
+        cerr<<"ERROR on accept"<<endl;
+        exit(1);
+    }
+    return sock;
+}
+
+char * get_ip(const char * host){
+	struct hostent *hent;
+	int iplen = 15;
+	char *ip = (char*) malloc(iplen+1);
+	memset(ip,0,iplen+1);
+	if((hent = gethostbyname(host))==NULL){
+		printf("Can't find the hostname");
+		exit(1);
+	}
+	if(inet_ntop(AF_INET, (void *)hent->h_addr_list[0],ip,iplen)==NULL){
+		printf("Can't resolve host");
+		exit(1);
+	}
+	return ip;
+}
+
+
 int main (int argc, char *argv[])
 {
   // command line parsing
   socklen_t len;
-  int sock_desc = socket(AF_INET, SOCK_STREAM,0);
-  if(sock_desc < 0){
-  	cerr<<"ERROR on opening the socket";
-  }
-
+  int sock_desc = create_tcp_socket();
 
   struct sockaddr_in serv_addr; 
   serv_addr.sin_family = AF_INET;
@@ -58,11 +81,29 @@ int main (int argc, char *argv[])
 	const char *buf3 = "GET http://www.google.com:80/index.html/ HTTP/1.0\r\nContent-Length:80\r\nIf-Modified-Since: Sat, 29 Oct 1994 19:43:31 GMT\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 	size_t size = req.GetTotalLength();
-	char buf2[size];
-	req.FormatRequest(buf2);
-	cout<<buf2<<endl;
+      char* ip = get_ip((req.GetHost()).c_str());
+      char buf2[size];
+      req.FormatRequest(buf2);
+      int sock_fetch = create_tcp_socket();
+      struct sockaddr_in client;
+      client.sin_family = AF_INET;
+      client.sin_addr.s_addr = inet_addr(ip);
+      client.sin_port = req.GetPort();
+      connect(sock_fetch, (struct sockaddr*)&client, sizeof(client));
+      send(sock_fetch, buf2, size, 0);
+      
+      char buf4[BUFFERSIZE];
+      if(recv(sock_fetch,buf4,BUFFERSIZE,0)<0){
+          cerr<<"ERROR on reading data"<<endl;
+          exit(1);
+      }
+	cout<<buf4<<endl;
+      
+      send(temp_sock_desc, buf4, BUFFERSIZE, 0);
   }
   close(temp_sock_desc);
   close(sock_desc);
   return 0;
 }
+
+
