@@ -26,10 +26,9 @@ int main (int argc, char *argv[])
   len = sizeof(client);
   k = listen(sock_desc,20);
   printf("result for listen is %d\n",k);
-  
+  int temp_sock_desc = accept(sock_desc, (struct sockaddr*)&client, &len);
   while(1){
   	char buf[512];
-  	int temp_sock_desc = accept(sock_desc, (struct sockaddr*)&client, &len);
   	k = recv(temp_sock_desc,buf,512,0);
 	if(strcmp(buf,"exit")==0){
 		break;
@@ -37,8 +36,8 @@ int main (int argc, char *argv[])
 	if(k>0){
 		cout<<buf<<endl;
 	}
-	close(temp_sock_desc);
   }
+  close(temp_sock_desc);
   close(sock_desc);
   return 0;
 }
