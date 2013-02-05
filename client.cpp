@@ -23,7 +23,7 @@ main()
     memset(&client,0,sizeof(client)); 
     client.sin_family = AF_INET; 
     client.sin_addr.s_addr = inet_addr("127.0.0.1"); 
-    client.sin_port = 9989; 
+    client.sin_port = 19989; 
     k = connect(sock_desc,(struct sockaddr*)&client,sizeof(client)); 
     while(1)
     {     

@@ -1,3 +1,5 @@
 build/
 .*
 sm
+client
+http-proxy
