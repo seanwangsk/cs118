@@ -81,23 +81,38 @@ int main (int argc, char *argv[])
 	const char *buf3 = "GET http://www.google.com:80/index.html/ HTTP/1.0\r\nContent-Length:80\r\nIf-Modified-Since: Sat, 29 Oct 1994 19:43:31 GMT\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 	size_t size = req.GetTotalLength();
+      
       char* ip = get_ip((req.GetHost()).c_str());
       char buf2[size];
       req.FormatRequest(buf2);
+     
+      cout<<"ip is "<<ip<<endl;
+      cout<<"buff is "<<buf2<<endl;
+      
+
+      //====fetch data from remote server===
       int sock_fetch = create_tcp_socket();
       struct sockaddr_in client;
       client.sin_family = AF_INET;
       client.sin_addr.s_addr = inet_addr(ip);
-      client.sin_port = req.GetPort();
-      connect(sock_fetch, (struct sockaddr*)&client, sizeof(client));
-      send(sock_fetch, buf2, size, 0);
-      
+      client.sin_port = htons(req.GetPort());
+      cout<<"flag1"<<endl;
+      if(connect(sock_fetch, (struct sockaddr*)&client, sizeof(client))<0){
+      	cerr<<"connect error when fetching data from remote server"<<endl;
+      	exit(1);
+      }
+      cout<<"flag2"<<endl;
+      if(send(sock_fetch, buf2, size, 0)<0){
+      	cerr<<"send failed when fetching data from remote server"<<endl;
+	exit(1);
+      }
+      cout<<"flag3"<<endl;
       char buf4[BUFFERSIZE];
       if(recv(sock_fetch,buf4,BUFFERSIZE,0)<0){
           cerr<<"ERROR on reading data"<<endl;
           exit(1);
       }
-	cout<<buf4<<endl;
+      cout<<buf4<<endl;
       
       send(temp_sock_desc, buf4, BUFFERSIZE, 0);
   }
