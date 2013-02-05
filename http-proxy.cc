@@ -8,8 +8,10 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
-#include "http-request.h"
 #include <netdb.h>
+
+#include "http-request.h"
+#include "http-response.h"
 
 #define PORT 19989
 #define BUFFERSIZE 512
@@ -69,7 +71,7 @@ int main (int argc, char *argv[])
   	cerr<<"ERROR on accept"<<endl;
 	exit(1);
   }
-  while(1){
+  //while(1){
   	char buf[BUFFERSIZE];
   	if(recv(temp_sock_desc,buf,BUFFERSIZE,0)<0){
 		cerr<<"ERROR on reading data"<<endl;
@@ -83,11 +85,12 @@ int main (int argc, char *argv[])
 	size_t size = req.GetTotalLength();
       
       char* ip = get_ip((req.GetHost()).c_str());
-      char buf2[size];
-      req.FormatRequest(buf2);
+      
+      bzero(buf, BUFFERSIZE);
+      req.FormatRequest(buf);
      
       cout<<"ip is "<<ip<<endl;
-      cout<<"buff is "<<buf2<<endl;
+      cout<<"buff is "<<buf<<endl;
       
 
       //====fetch data from remote server===
@@ -96,26 +99,30 @@ int main (int argc, char *argv[])
       client.sin_family = AF_INET;
       client.sin_addr.s_addr = inet_addr(ip);
       client.sin_port = htons(req.GetPort());
-      cout<<"flag1"<<endl;
       if(connect(sock_fetch, (struct sockaddr*)&client, sizeof(client))<0){
       	cerr<<"connect error when fetching data from remote server"<<endl;
       	exit(1);
       }
-      cout<<"flag2"<<endl;
-      if(send(sock_fetch, buf2, size, 0)<0){
+      cout<<"Connection established"<<endl;
+      if(send(sock_fetch, buf, size, 0)<0){
       	cerr<<"send failed when fetching data from remote server"<<endl;
 	exit(1);
       }
-      cout<<"flag3"<<endl;
-      char buf4[BUFFERSIZE];
-      if(recv(sock_fetch,buf4,BUFFERSIZE,0)<0){
+      cout<<"Message sent"<<endl;
+      bzero(buf, BUFFERSIZE);
+      if(recv(sock_fetch,buf,BUFFERSIZE,0)<0){
           cerr<<"ERROR on reading data"<<endl;
           exit(1);
       }
-      cout<<buf4<<endl;
+      close(sock_fetch);
+      cout<<"Response received as "<<buf<<endl;
       
-      send(temp_sock_desc, buf4, BUFFERSIZE, 0);
-  }
+      HttpResponse response;
+      response.ParseResponse(buf, BUFFERSIZE);
+      bzero(buf, BUFFERSIZE);
+      response.FormatResponse(buf);
+      send(temp_sock_desc, buf, BUFFERSIZE, 0);
+  //}
   close(temp_sock_desc);
   close(sock_desc);
   return 0;
