@@ -13,6 +13,16 @@
 #include "http-request.h"
 #include "http-response.h"
 
+#define _DEBUG 1
+
+#ifdef _DEBUG
+#include <iostream>
+#define TRACE(x) std::cout << x << endl;
+#else
+#define TRACE(x) 
+#endif // _DEBUG
+
+
 #define PORT 19989
 #define BUFFERSIZE 65535
 
@@ -58,12 +68,12 @@ int main (int argc, char *argv[])
  	 cerr<<"ERROR on binding"<<endl;
 	 exit(1);
   }
-
+  TRACE("bind successful")
   if(listen(sock_desc,20)<0){
   	cerr<<"ERROR on listening"<<endl;
 	exit(1);
   }
-
+  TRACE("listen succesful")
   struct sockaddr_in cli_addr;
   len = sizeof(cli_addr);
   int temp_sock_desc = accept(sock_desc, (struct sockaddr*)&cli_addr, &len);
@@ -71,29 +81,44 @@ int main (int argc, char *argv[])
   	cerr<<"ERROR on accept"<<endl;
 	exit(1);
   }
+  TRACE("accept successful");
   //while(1){
-  	char buf[BUFFERSIZE];
-  	if(recv(temp_sock_desc,buf,BUFFERSIZE,0)<0){
+    string buf_data;
+  	char buf_temp[BUFFERSIZE];
+    const char * data;
+    
+    ssize_t size_recv;
+    while((size_recv = recv(temp_sock_desc,buf_temp,BUFFERSIZE,0))>0){
+	TRACE("size recieved is"<<size_recv)
+        buf_data.append(buf_temp,size_recv);
+	if(buf_data.find_last_of("\r\n\r\n",buf_data.length())>0){
+		break;
+	}
+    }
+    
+    if(size_recv<0){
 		cerr<<"ERROR on reading data"<<endl;
 		exit(1);
 	}
 
 	HttpRequest req;
-
+printf("1\n");
 	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
-	size_t size = req.GetTotalLength();
+	size_t size_req = req.GetTotalLength();
       
       char* ip = get_ip((req.GetHost()).c_str());
-      
-      bzero(buf, BUFFERSIZE);
-      req.FormatRequest(buf);
+    
+    char buf_req[size_req];
+      bzero(buf_req, size_req);
+      req.FormatRequest(buf_req);
      
-      cout<<"ip is "<<ip<<endl;
-      cout<<"buff is "<<buf<<endl;
+      TRACE("ip is "<<ip<<endl)
+      TRACE("buff is "<<buf_req);
       
 
       //====fetch data from remote server===
+    TRACE("Now fetching data from the remote server");
       int sock_fetch = create_tcp_socket();
       struct sockaddr_in client;
       client.sin_family = AF_INET;
@@ -103,32 +128,35 @@ int main (int argc, char *argv[])
       	cerr<<"connect error when fetching data from remote server"<<endl;
       	exit(1);
       }
-      cout<<"Connection established"<<endl;
-      if(send(sock_fetch, buf, size, 0)<0){
+    
+      TRACE("Connection established")
+      if(send(sock_fetch, buf_req, size_req, 0)<0){
       	cerr<<"send failed when fetching data from remote server"<<endl;
 	exit(1);
       }
-      cout<<"Message sent"<<endl;
-      bzero(buf, BUFFERSIZE);
-      int recv_size = 0;
+      TRACE("Message sent to the remote server")
+    buf_data.clear();
+      bzero(buf_temp, BUFFERSIZE);
+      ssize_t recv_size = 0;
 
-      while((recv_size = recv(sock_fetch,buf,BUFFERSIZE,0))>0){
-          send(temp_sock_desc, buf, BUFFERSIZE, 0);
+      while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
+          buf_data.append(buf_temp,recv_size);
       }
       if(recv_size < 0){
-	 cerr<<"ERROR on reading data"<<endl;
-         exit(1);
+          cerr<<"ERROR on reading data"<<endl;
+          exit(1);
       }
-      
-      
       close(sock_fetch);
-      //cout<<"Response received as "<<buf<<endl;
-      
-      //HttpResponse response;
-      //response.ParseResponse(buf, BUFFERSIZE);
-      //bzero(buf, BUFFERSIZE);
-      //response.FormatResponse(buf);
-      send(temp_sock_desc, buf, BUFFERSIZE, 0);
+    TRACE("Data received, forwarding to the client")
+    data = buf_data.c_str();
+    HttpResponse response;
+    response.ParseResponse(data, sizeof(data));
+    char buf_resp[response.GetTotalLength()];
+    response.FormatResponse(buf_resp);
+    
+    send(temp_sock_desc, buf_resp, BUFFERSIZE, 0);
+
+      TRACE("Done")
   //}
   close(temp_sock_desc);
   close(sock_desc);
