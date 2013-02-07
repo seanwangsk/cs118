@@ -54,6 +54,7 @@ char * get_ip(const char * host){
 }
 
 
+
 int main (int argc, char *argv[])
 {
   // command line parsing
@@ -140,14 +141,67 @@ int main (int argc, char *argv[])
     buf_data.clear();
       bzero(buf_temp, BUFFERSIZE);
       ssize_t recv_size = 0;
+    
+    bool isHeader = true;
+    bool isChunk = false; 
+    
+    unsigned long headerHead = string::npos;
+    unsigned long headerTail = string::npos;
+    long contentLeft = 0;
       while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
           buf_data.append(buf_temp,recv_size);
-	 
-          if(buf_data.find("\r\n\r\n")!=string::npos){
-	      TRACE(buf_data)
-              break;
+          string body;
+          if(isHeader){
+              //header hasn't been parsed yet
+              if ((headerHead= buf_data.find("HTTP/")) == string::npos) {                  throw ParseException ("Incorrectly formatted response");
+              }
+              if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
+                  //finish receiving the header part
+                  string header = buf_data.substr(headerHead,headerTail);
+                  TRACE("header is:\n"<<header);
+                  body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
+                  TRACE("body is:\n"<<body);
+                  
+                  //try to get content-length
+                  unsigned long lengthStart = header.find("Content-Length: ");
+                  if(lengthStart != string::npos){
+                      unsigned long lengthEnd = header.find("\r\n", lengthStart);
+                      string length = header.substr(lengthStart+sizeof("Content-Length: ")-1,lengthEnd);
+                      TRACE("Content Length "<<length)
+                      contentLeft = atol(length.c_str());
+                      isChunk = false;
+                  }
+                  else{
+                      if(header.find("Transfer-Encoding: chunked")!=string::npos){
+                          isChunk = true;
+                      }
+                      else{
+                          throw ParseException ("Incorrectly formatted response");
+                      }
+                  }
+                  TRACE("isChunk: "<<isChunk);
+                  isHeader = true;
+              }
+              else{
+                  isHeader = false;
+              }
           }
-	  //TRACE(buf_data);
+          else{
+              //the whole buffer is message body
+              body = buf_data;
+          }
+          //check whether the message body has ended 
+          if(!isHeader && isChunk){
+              if(body.find("0\r\n\r\n")){
+                  break;
+              }
+          }
+          else{
+              contentLeft -= body.size();
+              if(contentLeft <=0){
+                  break;
+              }
+          }
       }
       if(recv_size < 0){
           cerr<<"ERROR on reading data"<<endl;
