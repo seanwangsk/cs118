@@ -89,11 +89,14 @@ int main (int argc, char *argv[])
     
     ssize_t size_recv;
     while((size_recv = recv(temp_sock_desc,buf_temp,BUFFERSIZE,0))>0){
-	TRACE("size recieved is"<<size_recv)
+        TRACE("message received is "<<buf_temp);
+        TRACE("size recieved is "<<size_recv)
         buf_data.append(buf_temp,size_recv);
-	if(buf_data.find_last_of("\r\n\r\n",buf_data.length())>0){
-		break;
-	}
+        
+        unsigned long i = 0;
+        if((i = buf_data.find_last_of("\r\n\r\n",buf_data.length()))!=string::npos){
+            break;
+        }
     }
     
     if(size_recv<0){
@@ -102,7 +105,6 @@ int main (int argc, char *argv[])
 	}
 
 	HttpRequest req;
-printf("1\n");
 	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 	size_t size_req = req.GetTotalLength();
@@ -141,6 +143,7 @@ printf("1\n");
 
       while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
           buf_data.append(buf_temp,recv_size);
+          TRACE("data received as "<<buf_temp)
       }
       if(recv_size < 0){
           cerr<<"ERROR on reading data"<<endl;
@@ -148,10 +151,7 @@ printf("1\n");
       }
       close(sock_fetch);
     TRACE("Data received, forwarding to the client")
-<<<<<<< HEAD
     data = buf_data.c_str();
-=======
->>>>>>> e71e28ec3ad287d8a662f71a3059553e77d49cc9
     HttpResponse response;
     response.ParseResponse(data, sizeof(data));
     char buf_resp[response.GetTotalLength()];
