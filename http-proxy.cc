@@ -180,10 +180,10 @@ int main (int argc, char *argv[])
                       }
                   }
                   TRACE("isChunk: "<<isChunk);
-                  isHeader = true;
+                  isHeader = false;
               }
               else{
-                  isHeader = false;
+                  isHeader = true;
               }
           }
           else{
@@ -192,7 +192,8 @@ int main (int argc, char *argv[])
           }
           //check whether the message body has ended 
           if(!isHeader && isChunk){
-              if(body.find("0\r\n\r\n")){
+              if(body.find("0\r\n\r\n")!=string::npos){
+	      	  TRACE(body.substr(body.find("0\r\n\r\n")))
                   break;
               }
           }
