@@ -188,7 +188,7 @@ int main (int argc, char *argv[])
           }
           else{
               //the whole buffer is message body
-              body = buf_data;
+              body = buf_temp;
           }
           //check whether the message body has ended 
           if(!isHeader && isChunk){
@@ -210,6 +210,8 @@ int main (int argc, char *argv[])
       }
       close(sock_fetch);
     TRACE("Data received, forwarding to the client")
+    TRACE("data is:\n"<<buf_data)
+    
     data = buf_data.c_str();
     HttpResponse response;
     response.ParseResponse(data, sizeof(data));
