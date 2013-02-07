@@ -93,7 +93,6 @@ int main (int argc, char *argv[])
         TRACE("message received is "<<buf_temp);
         TRACE("size recieved is "<<size_recv)
         buf_data.append(buf_temp,size_recv);
-        
         unsigned long i = 0;
         if((i = buf_data.find("\r\n\r\n"))!=string::npos){
             break;
@@ -106,7 +105,7 @@ int main (int argc, char *argv[])
 	}
 
 	HttpRequest req;
-	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
+	const char *buf3 = "GET http://www.yahoo.com:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 	size_t size_req = req.GetTotalLength();
       
@@ -165,15 +164,19 @@ int main (int argc, char *argv[])
                   //try to get content-length
                   unsigned long lengthStart = header.find("Content-Length: ");
                   if(lengthStart != string::npos){
-                      unsigned long lengthEnd = header.find("\r\n", lengthStart);
-                      string length = header.substr(lengthStart+sizeof("Content-Length: ")-1,lengthEnd);
-                      TRACE("Content Length "<<length)
+                      string length = header.substr(lengthStart+sizeof("Content-Length: ")-1);
                       contentLeft = atol(length.c_str());
+                      TRACE("Content Length "<<contentLeft)
                       isChunk = false;
+		      contentLeft -= body.size();
                   }
                   else{
                       if(header.find("Transfer-Encoding: chunked")!=string::npos){
                           isChunk = true;
+			  if(body.find("0\r\n\r\n")!=string::npos){
+	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
+                  	 	break;
+              		  }
                       }
                       else{
                           throw ParseException ("Incorrectly formatted response");
@@ -187,21 +190,20 @@ int main (int argc, char *argv[])
               }
           }
           else{
-              //the whole buffer is message body
-              body = buf_temp;
-          }
-          //check whether the message body has ended 
-          if(!isHeader && isChunk){
-              if(body.find("0\r\n\r\n")!=string::npos){
-	      	  TRACE(body.substr(body.find("0\r\n\r\n")))
-                  break;
-              }
-          }
-          else{
-              contentLeft -= body.size();
-              if(contentLeft <=0){
-                  break;
-              }
+            //check whether the message body has ended 
+          	if(isChunk){
+              		if(body.find("0\r\n\r\n")!=string::npos){
+	      	  	TRACE(body.substr(body.find("0\r\n\r\n")))
+                  	break;
+              	}
+          	
+          	else{
+              		contentLeft -= recv_size;
+	      TRACE("content left is "<<contentLeft)
+          //    if(contentLeft <=0){
+          //        break;
+          //    }
+	  	}
           }
       }
       if(recv_size < 0){
@@ -210,11 +212,12 @@ int main (int argc, char *argv[])
       }
       close(sock_fetch);
     TRACE("Data received, forwarding to the client")
-    TRACE("data is:\n"<<buf_data)
+    //TRACE("data is:\n"<<buf_data)
     
     data = buf_data.c_str();
+    TRACE(data)
     HttpResponse response;
-    response.ParseResponse(data, sizeof(data));
+    response.ParseResponse(data, strlen(data));
     char buf_resp[response.GetTotalLength()];
     response.FormatResponse(buf_resp);
     
