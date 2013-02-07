@@ -193,16 +193,16 @@ int main (int argc, char *argv[])
             //check whether the message body has ended 
           	if(isChunk){
               		if(body.find("0\r\n\r\n")!=string::npos){
-	      	  	TRACE(body.substr(body.find("0\r\n\r\n")))
-                  	break;
-              	}
-          	
+	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
+                  		break;
+              		}
+          	}
           	else{
               		contentLeft -= recv_size;
-	      TRACE("content left is "<<contentLeft)
-          //    if(contentLeft <=0){
-          //        break;
-          //    }
+	      		TRACE("content left is "<<contentLeft)
+              		if(contentLeft <=0){
+                  		break;
+              		}
 	  	}
           }
       }
@@ -219,9 +219,10 @@ int main (int argc, char *argv[])
     HttpResponse response;
     response.ParseResponse(data, strlen(data));
     char buf_resp[response.GetTotalLength()];
+    TRACE(response.GetTotalLength())
     response.FormatResponse(buf_resp);
     
-    send(temp_sock_desc, buf_resp, BUFFERSIZE, 0);
+    send(temp_sock_desc, buf_resp, sizeof(buf_resp), 0);
 
       TRACE("Done")
   //}
