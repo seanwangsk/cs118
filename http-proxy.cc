@@ -94,7 +94,7 @@ int main (int argc, char *argv[])
         buf_data.append(buf_temp,size_recv);
         
         unsigned long i = 0;
-        if((i = buf_data.find_last_of("\r\n\r\n",buf_data.length()))!=string::npos){
+        if((i = buf_data.find("\r\n\r\n"))!=string::npos){
             break;
         }
     }
@@ -140,13 +140,14 @@ int main (int argc, char *argv[])
     buf_data.clear();
       bzero(buf_temp, BUFFERSIZE);
       ssize_t recv_size = 0;
-
       while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
           buf_data.append(buf_temp,recv_size);
-          int i;
-          if((i = buf_data.find_last_of("\r\n\r\n",buf_data.length()))!=string::npos){
+	 
+          if(buf_data.find("\r\n\r\n")!=string::npos){
+	      TRACE(buf_data)
               break;
           }
+	  //TRACE(buf_data);
       }
       if(recv_size < 0){
           cerr<<"ERROR on reading data"<<endl;
