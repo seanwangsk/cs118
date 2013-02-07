@@ -143,7 +143,10 @@ int main (int argc, char *argv[])
 
       while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
           buf_data.append(buf_temp,recv_size);
-          TRACE("data received as "<<buf_temp)
+          int i;
+          if((i = buf_data.find_last_of("\r\n\r\n",buf_data.length()))!=string::npos){
+              break;
+          }
       }
       if(recv_size < 0){
           cerr<<"ERROR on reading data"<<endl;
