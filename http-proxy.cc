@@ -14,7 +14,7 @@
 #include "http-response.h"
 
 #define PORT 19989
-#define BUFFERSIZE 512
+#define BUFFERSIZE 65535
 
 using namespace std;
 
@@ -80,7 +80,7 @@ int main (int argc, char *argv[])
 
 	HttpRequest req;
 
-	const char *buf3 = "GET http://www.google.com:80/index.html/ HTTP/1.0\r\nContent-Length:80\r\nIf-Modified-Since: Sat, 29 Oct 1994 19:43:31 GMT\r\n\r\n";
+	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 	size_t size = req.GetTotalLength();
       
@@ -110,17 +110,24 @@ int main (int argc, char *argv[])
       }
       cout<<"Message sent"<<endl;
       bzero(buf, BUFFERSIZE);
-      if(recv(sock_fetch,buf,BUFFERSIZE,0)<0){
-          cerr<<"ERROR on reading data"<<endl;
-          exit(1);
+      int recv_size = 0;
+
+      while((recv_size = recv(sock_fetch,buf,BUFFERSIZE,0))>0){
+          send(temp_sock_desc, buf, BUFFERSIZE, 0);
       }
-      close(sock_fetch);
-      cout<<"Response received as "<<buf<<endl;
+      if(recv_size < 0){
+	 cerr<<"ERROR on reading data"<<endl;
+         exit(1);
+      }
       
-      HttpResponse response;
-      response.ParseResponse(buf, BUFFERSIZE);
-      bzero(buf, BUFFERSIZE);
-      response.FormatResponse(buf);
+      
+      close(sock_fetch);
+      //cout<<"Response received as "<<buf<<endl;
+      
+      //HttpResponse response;
+      //response.ParseResponse(buf, BUFFERSIZE);
+      //bzero(buf, BUFFERSIZE);
+      //response.FormatResponse(buf);
       send(temp_sock_desc, buf, BUFFERSIZE, 0);
   //}
   close(temp_sock_desc);
