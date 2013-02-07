@@ -148,7 +148,10 @@ printf("1\n");
       }
       close(sock_fetch);
     TRACE("Data received, forwarding to the client")
+<<<<<<< HEAD
     data = buf_data.c_str();
+=======
+>>>>>>> e71e28ec3ad287d8a662f71a3059553e77d49cc9
     HttpResponse response;
     response.ParseResponse(data, sizeof(data));
     char buf_resp[response.GetTotalLength()];
