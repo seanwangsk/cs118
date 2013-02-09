@@ -146,13 +146,19 @@ int main (int argc, char *argv[])
     
     unsigned long headerHead = string::npos;
     unsigned long headerTail = string::npos;
+    HttpResponse response;
+    
     long contentLeft = 0;
       while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
           buf_data.append(buf_temp,recv_size);
           string body;
           if(isHeader){
               //header hasn't been parsed yet
-              if ((headerHead= buf_data.find("HTTP/")) == string::npos) {                  throw ParseException ("Incorrectly formatted response");
+              if (headerHead == string::npos){
+                  headerHead= buf_data.find("HTTP/");
+                  if(headerHead == string::npos){
+                      throw ParseException ("Incorrectly formatted response");
+                  }
               }
               if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
                   //finish receiving the header part
@@ -161,25 +167,27 @@ int main (int argc, char *argv[])
                   body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
                   TRACE("body is:\n"<<body);
                   
-                  //try to get content-length
-                  unsigned long lengthStart = header.find("Content-Length: ");
-                  if(lengthStart != string::npos){
-                      string length = header.substr(lengthStart+sizeof("Content-Length: ")-1);
-                      contentLeft = atol(length.c_str());
-                      TRACE("Content Length "<<contentLeft)
+                  TRACE("the size of header.c_str is "<<strlen(header.c_str())<<" and the size of header.length is "<<header.length()<<" and end-start is "<<(headerTail - headerHead));
+                  response.ParseResponse(header.c_str(), header.length());
+                  string contentLength = response.FindHeader("Content-Length");
+                  TRACE("Content Length is <"<<contentLength<<">")
+                  if(contentLength!=""){
+                      contentLeft = atol(contentLength.c_str());
                       isChunk = false;
-		      contentLeft -= body.size();
+                      contentLeft -= body.size();
                   }
                   else{
-                      if(header.find("Transfer-Encoding: chunked")!=string::npos){
+                      TRACE("Find Transfer-Encoding "<<response.FindHeader("Transfer-Encoding"))
+                      if(response.FindHeader("Transfer-Encoding")=="chunked"){
+                          TRACE("chunked")
                           isChunk = true;
-			  if(body.find("0\r\n\r\n")!=string::npos){
-	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
-                  	 	break;
-              		  }
+                          if(body.find("0\r\n\r\n")!=string::npos){
+                              TRACE(body.substr(body.find("0\r\n\r\n")))
+                              break;
+                          }
                       }
                       else{
-                          throw ParseException ("Incorrectly formatted response");
+                          throw ParseException ("Incorrectly formatted response");                      
                       }
                   }
                   TRACE("isChunk: "<<isChunk);
@@ -202,8 +210,8 @@ int main (int argc, char *argv[])
 	      TRACE("content left is "<<contentLeft)
           //    if(contentLeft <=0){
           //        break;
-          //    }
-	  	}
+          //   gigit aa }
+                }
           }
       }
       if(recv_size < 0){
@@ -215,13 +223,7 @@ int main (int argc, char *argv[])
     //TRACE("data is:\n"<<buf_data)
     
     data = buf_data.c_str();
-    TRACE(data)
-    HttpResponse response;
-    response.ParseResponse(data, strlen(data));
-    char buf_resp[response.GetTotalLength()];
-    response.FormatResponse(buf_resp);
-    
-    send(temp_sock_desc, buf_resp, BUFFERSIZE, 0);
+    send(temp_sock_desc, data, sizeof(data) , 0);
 
       TRACE("Done")
   //}
