@@ -192,7 +192,7 @@ int main (int argc, char *argv[])
                   }
                   TRACE("isChunk: "<<isChunk);
                   isHeader = false;
-              }
+              }//Finish receiving all data for header
               else{
                   isHeader = true;
               }
@@ -201,19 +201,19 @@ int main (int argc, char *argv[])
             //check whether the message body has ended 
           	if(isChunk){
               		if(body.find("0\r\n\r\n")!=string::npos){
-	      	  	TRACE(body.substr(body.find("0\r\n\r\n")))
-                  	break;
-              	}
-          	
+	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
+                  		break;
+              		}
+          	}
           	else{
               		contentLeft -= recv_size;
-	      TRACE("content left is "<<contentLeft)
-          //    if(contentLeft <=0){
-          //        break;
-          //   gigit aa }
-                }
-          }
-      }
+	      		TRACE("content left is "<<contentLeft)
+              		if(contentLeft <=0){
+                  		break;
+              		}
+            }//if end is determined by content-length
+          }//not header part
+      }//while for reading data
       if(recv_size < 0){
           cerr<<"ERROR on reading data"<<endl;
           exit(1);
@@ -224,6 +224,7 @@ int main (int argc, char *argv[])
     
     data = buf_data.c_str();
     send(temp_sock_desc, data, sizeof(data) , 0);
+
 
       TRACE("Done")
   //}
