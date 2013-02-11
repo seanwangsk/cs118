@@ -120,7 +120,7 @@ int main (int argc, char *argv[])
 	}
 
 	HttpRequest req;
-	const char *buf3 = "GET http://www.yahoo.com:80/ HTTP/1.1\r\n\r\n";
+	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 	size_t size_req = req.GetTotalLength();
       
@@ -177,13 +177,14 @@ int main (int argc, char *argv[])
               }
               if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
                   //finish receiving the header part
-                  string header = buf_data.substr(headerHead,headerTail);
+                  string header = buf_data.substr(headerHead,headerTail+4);
                   TRACE("header is:\n"<<header);
                   body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
-                  TRACE("body is:\n"<<body);
+                  TRACE("body is:\n"<<body<<"\n\n");
                   
                   TRACE("the size of header.c_str is "<<strlen(header.c_str())<<" and the size of header.length is "<<header.length()<<" and end-start is "<<(headerTail - headerHead));
                   response.ParseResponse(header.c_str(), header.length());
+
                   string contentLength = response.FindHeader("Content-Length");
                   TRACE("Content Length is <"<<contentLength<<">")
                   if(contentLength!=""){
@@ -215,6 +216,7 @@ int main (int argc, char *argv[])
           else{
             //check whether the message body has ended 
           	if(isChunk){
+			body = buf_temp;
               		if(body.find("0\r\n\r\n")!=string::npos){
 	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
                   		break;
@@ -238,7 +240,8 @@ int main (int argc, char *argv[])
     //TRACE("data is:\n"<<buf_data)
     
     data = buf_data.c_str();
-    send(temp_sock_desc, data, sizeof(data) , 0);
+    send(temp_sock_desc, data, strlen(data)+1 , 0);
+    //TRACE("size is "<<sizeof(data))
 
 
       TRACE("Done")
