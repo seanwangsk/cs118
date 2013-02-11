@@ -61,6 +61,116 @@ char * get_ip(const char * host){
 	return ip;
 }
 
+const char * getResponseData(int sckt){
+    bool isHeader = true;
+    bool isChunk = false;
+    
+    unsigned long headerHead = string::npos;
+    unsigned long headerTail = string::npos;
+    HttpResponse response;
+    
+    ssize_t recv_size;
+    string buf_data = "";
+    char buf_temp[BUFFERSIZE];
+    
+    long contentLeft = 0;
+    while((recv_size = recv(sckt,buf_temp,BUFFERSIZE,0))>0){
+        buf_data.append(buf_temp,recv_size);
+        string body;
+        if(isHeader){
+            //header hasn't been parsed yet
+            if (headerHead == string::npos){
+                headerHead= buf_data.find("HTTP/");
+                if(headerHead == string::npos){
+                    throw ParseException ("Incorrectly formatted response");
+                }
+            }
+            if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
+                //finish receiving the header part
+                string header = buf_data.substr(headerHead,headerTail+4);
+                TRACE("header is:\n"<<header);
+                body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
+                TRACE("body is:\n"<<body<<"\n\n");
+                
+                TRACE("the size of header.c_str is "<<strlen(header.c_str())<<" and the size of header.length is "<<header.length()<<" and end-start is "<<(headerTail - headerHead));
+                response.ParseResponse(header.c_str(), header.length());
+                
+                string contentLength = response.FindHeader("Content-Length");
+                TRACE("Content Length is <"<<contentLength<<">")
+                if(contentLength!=""){
+                    contentLeft = atol(contentLength.c_str());
+                    isChunk = false;
+                    contentLeft -= body.size();
+                }
+                else{
+                    TRACE("Find Transfer-Encoding "<<response.FindHeader("Transfer-Encoding"))
+                    if(response.FindHeader("Transfer-Encoding")=="chunked"){
+                        TRACE("chunked")
+                        isChunk = true;
+                        if(body.find("0\r\n\r\n")!=string::npos){
+                            TRACE(body.substr(body.find("0\r\n\r\n")))
+                            break;
+                        }
+                    }
+                    else{
+                        throw ParseException ("Incorrectly formatted response");
+                    }
+                }
+                TRACE("isChunk: "<<isChunk);
+                isHeader = false;
+            }//Finish receiving all data for header
+            else{
+                isHeader = true;
+            }
+        }
+        else{
+            //check whether the message body has ended
+          	if(isChunk){
+                body = buf_temp;
+                if(body.find("0\r\n\r\n")!=string::npos){
+	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
+                    break;
+                }
+          	}
+          	else{
+                contentLeft -= recv_size;
+	      		TRACE("content left is "<<contentLeft)
+                if(contentLeft <=0){
+                    break;
+                }
+            }//if end is determined by content-length
+        }//not header part
+    }//while for reading data
+    if(recv_size < 0){
+        cerr<<"ERROR on reading data"<<endl;
+        exit(1);
+    }
+    return buf_data.c_str();
+}
+
+const char* getResponse(char* ip, unsigned short port, char* buf_req, size_t size_req){
+    int sock_fetch = create_tcp_socket();
+    struct sockaddr_in client;
+    client.sin_family = AF_INET;
+    client.sin_addr.s_addr = inet_addr(ip);
+    client.sin_port = port;
+    if(connect(sock_fetch, (struct sockaddr*)&client, sizeof(client))<0){
+      	cerr<<"connect error when fetching data from remote server"<<endl;
+      	exit(1);
+    }
+    
+    TRACE("Connection established")
+    if(send(sock_fetch, buf_req, size_req, 0)<0){
+      	cerr<<"send failed when fetching data from remote server"<<endl;
+        exit(1);
+    }
+    TRACE("Message sent to the remote server")
+    
+    const char * data = getResponseData(sock_fetch);
+    close(sock_fetch);
+    return data;
+}
+
 string formatErrorMessage(){
     
 }
@@ -76,7 +186,7 @@ int main (int argc, char *argv[])
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;//inet_addr("127.0.0.1");
   serv_addr.sin_port = htons(PORT);
-  if(bind(sock_desc, (struct sockaddr*)&serv_addr, sizeof(serv_addr))<0){
+  if((bind(sock_desc, (struct sockaddr*)&serv_addr, sizeof(serv_addr)))<0){
  	 cerr<<"ERROR on binding"<<endl;
 	 exit(1);
   }
@@ -100,7 +210,7 @@ int main (int argc, char *argv[])
     const char * data;
     
     //get request from established connection
-    try {
+    
         
     
     ssize_t size_recv;
@@ -129,117 +239,18 @@ int main (int argc, char *argv[])
     char buf_req[size_req];
       bzero(buf_req, size_req);
       req.FormatRequest(buf_req);
-     
+        unsigned short port = htons(req.GetPort());
       TRACE("ip is "<<ip<<endl)
       TRACE("buff is "<<buf_req);
       
 
       //====fetch data from remote server===
     TRACE("Now fetching data from the remote server");
-      int sock_fetch = create_tcp_socket();
-      struct sockaddr_in client;
-      client.sin_family = AF_INET;
-      client.sin_addr.s_addr = inet_addr(ip);
-      client.sin_port = htons(req.GetPort());
-      if(connect(sock_fetch, (struct sockaddr*)&client, sizeof(client))<0){
-      	cerr<<"connect error when fetching data from remote server"<<endl;
-      	exit(1);
-      }
     
-      TRACE("Connection established")
-      if(send(sock_fetch, buf_req, size_req, 0)<0){
-      	cerr<<"send failed when fetching data from remote server"<<endl;
-	exit(1);
-      }
-      TRACE("Message sent to the remote server")
-    buf_data.clear();
-      bzero(buf_temp, BUFFERSIZE);
-      ssize_t recv_size = 0;
-    
-    bool isHeader = true;
-    bool isChunk = false; 
-    
-    unsigned long headerHead = string::npos;
-    unsigned long headerTail = string::npos;
-    HttpResponse response;
-    
-    long contentLeft = 0;
-      while((recv_size = recv(sock_fetch,buf_temp,BUFFERSIZE,0))>0){
-          buf_data.append(buf_temp,recv_size);
-          string body;
-          if(isHeader){
-              //header hasn't been parsed yet
-              if (headerHead == string::npos){
-                  headerHead= buf_data.find("HTTP/");
-                  if(headerHead == string::npos){
-                      throw ParseException ("Incorrectly formatted response");
-                  }
-              }
-              if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
-                  //finish receiving the header part
-                  string header = buf_data.substr(headerHead,headerTail+4);
-                  TRACE("header is:\n"<<header);
-                  body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
-                  TRACE("body is:\n"<<body<<"\n\n");
-                  
-                  TRACE("the size of header.c_str is "<<strlen(header.c_str())<<" and the size of header.length is "<<header.length()<<" and end-start is "<<(headerTail - headerHead));
-                  response.ParseResponse(header.c_str(), header.length());
-
-                  string contentLength = response.FindHeader("Content-Length");
-                  TRACE("Content Length is <"<<contentLength<<">")
-                  if(contentLength!=""){
-                      contentLeft = atol(contentLength.c_str());
-                      isChunk = false;
-                      contentLeft -= body.size();
-                  }
-                  else{
-                      TRACE("Find Transfer-Encoding "<<response.FindHeader("Transfer-Encoding"))
-                      if(response.FindHeader("Transfer-Encoding")=="chunked"){
-                          TRACE("chunked")
-                          isChunk = true;
-                          if(body.find("0\r\n\r\n")!=string::npos){
-                              TRACE(body.substr(body.find("0\r\n\r\n")))
-                              break;
-                          }
-                      }
-                      else{
-                          throw ParseException ("Incorrectly formatted response");                      
-                      }
-                  }
-                  TRACE("isChunk: "<<isChunk);
-                  isHeader = false;
-              }//Finish receiving all data for header
-              else{
-                  isHeader = true;
-              }
-          }
-          else{
-            //check whether the message body has ended 
-          	if(isChunk){
-			body = buf_temp;
-              		if(body.find("0\r\n\r\n")!=string::npos){
-	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
-                  		break;
-              		}
-          	}
-          	else{
-              		contentLeft -= recv_size;
-	      		TRACE("content left is "<<contentLeft)
-              		if(contentLeft <=0){
-                  		break;
-              		}
-            }//if end is determined by content-length
-          }//not header part
-      }//while for reading data
-      if(recv_size < 0){
-          cerr<<"ERROR on reading data"<<endl;
-          exit(1);
-      }
-      close(sock_fetch);
-    TRACE("Data received, forwarding to the client")
     //TRACE("data is:\n"<<buf_data)
     
-    data = buf_data.c_str();
+    data = getResponse(ip, port, buf_req, size_req);
+    TRACE("Data received, forwarding to the client")
     send(temp_sock_desc, data, strlen(data)+1 , 0);
     //TRACE("size is "<<sizeof(data))
 
