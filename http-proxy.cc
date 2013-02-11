@@ -37,6 +37,14 @@ int create_tcp_socket(){
     return sock;
 }
 
+
+/**
+ * @brief convert hostname to ip address
+ * @TODO if cannot resolve host, what will happen?
+ *
+ * @param hostname
+ * @return ip address
+ */
 char * get_ip(const char * host){
 	struct hostent *hent;
 	int iplen = 15;
@@ -53,6 +61,9 @@ char * get_ip(const char * host){
 	return ip;
 }
 
+string formatErrorMessage(){
+    
+}
 
 
 int main (int argc, char *argv[])
@@ -87,6 +98,10 @@ int main (int argc, char *argv[])
     string buf_data;
   	char buf_temp[BUFFERSIZE];
     const char * data;
+    
+    //get request from established connection
+    try {
+        
     
     ssize_t size_recv;
     while((size_recv = recv(temp_sock_desc,buf_temp,BUFFERSIZE,0))>0){
