@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
+#include <time.h>
+#include <map>
 
 #include "http-request.h"
 #include "http-response.h"
@@ -27,6 +29,8 @@
 #define BUFFERSIZE 65535
 
 using namespace std;
+
+
 
 int create_tcp_socket(){
     int sock;
@@ -61,13 +65,95 @@ char * get_ip(const char * host){
 	return ip;
 }
 
-const char * getResponseData(int sckt){
+time_t convertTime(string ts){
+    const char* format = "%a, %d %b %Y %H:%M:%S %Z";
+    struct tm tm;
+    strptime(ts.c_str(), format, &tm);
+    return mktime(&tm);
+}
+
+class Webpage{
+public:
+    Webpage(time_t expire, string lModify, string eTag, const char* dt){
+        expireTime = expire;
+        ETag = eTag;
+        lastModify = lModify;
+        data = dt;
+    }
+    
+    time_t getExpire(void){
+        return expireTime;
+    }
+    
+    const char* getData(void){
+        return data;
+    }
+    
+    bool isExpired(){
+        time_t now = time(NULL);
+        if(difftime(expireTime, now)>0){
+            return true;
+        }
+        else{
+            return false;
+        }
+    }
+    
+    string getETag(){
+        return ETag;
+    }
+    
+    string getLastModify(){
+        return lastModify;
+    }
+    
+private:time_t expireTime;
+    string lastModify;
+    string ETag;
+    const char* data;
+};
+
+
+class Cache{
+public:
+    Webpage* get(string url){
+        map<string,Webpage>::iterator it;
+        it = storage.find(url);
+        if(it == storage.end()){
+            return NULL;
+        }
+        else{
+            return &it->second;
+        }
+    }
+    
+    void add(string url, Webpage pg){
+        storage[url]= pg;
+    }
+    
+    void remove(string url){
+        storage.erase(storage.find(url));
+    }
+    
+private:
+    map<string, Webpage> storage;
+} cache;
+
+
+/**
+ * @brief get all the data for the request sent, and form the respone. 
+ *      Assume that all package will have either content length or chunk
+ * @TODO for package with status code other than 200, is the assumption true?
+ *
+ * @param the socket that the request has been sent
+ * @return response data, and the response header 
+ */
+const char * fetchResponseData(int sckt, HttpResponse* response){
     bool isHeader = true;
     bool isChunk = false;
     
     unsigned long headerHead = string::npos;
     unsigned long headerTail = string::npos;
-    HttpResponse response;
     
     ssize_t recv_size;
     string buf_data = "";
@@ -93,9 +179,9 @@ const char * getResponseData(int sckt){
                 TRACE("body is:\n"<<body<<"\n\n");
                 
                 TRACE("the size of header.c_str is "<<strlen(header.c_str())<<" and the size of header.length is "<<header.length()<<" and end-start is "<<(headerTail - headerHead));
-                response.ParseResponse(header.c_str(), header.length());
+                response->ParseResponse(header.c_str(), header.length());
                 
-                string contentLength = response.FindHeader("Content-Length");
+                string contentLength = response->FindHeader("Content-Length");
                 TRACE("Content Length is <"<<contentLength<<">")
                 if(contentLength!=""){
                     contentLeft = atol(contentLength.c_str());
@@ -103,8 +189,8 @@ const char * getResponseData(int sckt){
                     contentLeft -= body.size();
                 }
                 else{
-                    TRACE("Find Transfer-Encoding "<<response.FindHeader("Transfer-Encoding"))
-                    if(response.FindHeader("Transfer-Encoding")=="chunked"){
+                    TRACE("Find Transfer-Encoding "<<response->FindHeader("Transfer-Encoding"))
+                    if(response->FindHeader("Transfer-Encoding")=="chunked"){
                         TRACE("chunked")
                         isChunk = true;
                         if(body.find("0\r\n\r\n")!=string::npos){
@@ -148,7 +234,31 @@ const char * getResponseData(int sckt){
     return buf_data.c_str();
 }
 
-const char* getResponse(char* ip, unsigned short port, char* buf_req, size_t size_req){
+long parseCacheControl(string s){
+    if(s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos){
+        return 0;
+    }
+    size_t pos = string::npos;
+    if ((pos = s.find("max-age"))!=string::npos) {
+        size_t numStart = s.find('=');
+        if(numStart != string::npos){
+            long age = atol(s.substr(numStart+1).c_str());
+            TRACE("max age is "<<time);
+            return age;
+        }
+    }
+    return 0;
+}
+
+const char* fetchResponse(HttpRequest req){
+    string url = req.GetHost() +":"+std::to_string(req.GetPort())+req.GetPath();
+    TRACE("url is "<<url);
+    
+    const char* host = (req.GetHost()).c_str();
+    unsigned short port = htons(req.GetPort());
+    char* ip  = get_ip(host);
+
+    
     int sock_fetch = create_tcp_socket();
     struct sockaddr_in client;
     client.sin_family = AF_INET;
@@ -159,29 +269,101 @@ const char* getResponse(char* ip, unsigned short port, char* buf_req, size_t siz
       	exit(1);
     }
     
+    
     TRACE("Connection established")
+    size_t size_req = req.GetTotalLength();
+    char buf_req[size_req];
+    bzero(buf_req, size_req);
     if(send(sock_fetch, buf_req, size_req, 0)<0){
       	cerr<<"send failed when fetching data from remote server"<<endl;
         exit(1);
     }
     TRACE("Message sent to the remote server")
+    HttpResponse resp;
+    const char * data = fetchResponseData(sock_fetch, &resp);
     
-    const char * data = getResponseData(sock_fetch);
+    string statusCode = resp.GetStatusCode();
+    TRACE("status code is "<<statusCode);
+    if (statusCode=="200") {
+        //Normal data package
+        string expire = resp.FindHeader("Expires");
+        string ETag = resp.FindHeader("ETag");
+        string date = resp.FindHeader("Date");
+        string lastModi = resp.FindHeader("Lat-Modified");
+        string cacheControl = resp.FindHeader("Cache-Control");
+        TRACE("expire as "<<expire<<"\nETag as "<<ETag<<"\ndate as "<<date<<"\nlastModi as "<<lastModi
+              <<"\ncacheControl as "<<cacheControl)
+        if (expire != "") {
+            time_t expire_t = convertTime(expire);
+            TRACE("add to cache with nomarl expire");
+            Webpage pg(expire_t, lastModi, ETag, data);
+            cache.add(url, pg);
+        }
+        else if(cacheControl!=""){
+            long maxAge = 0;
+            if ((maxAge = parseCacheControl(cacheControl))!=0 && date!="") {
+                time_t  expire_t = convertTime(date) + maxAge;
+                TRACE("add to cache with cache control");
+                Webpage pg(expire_t, lastModi, ETag, data);
+                cache.add(url, pg);
+            }
+            else{   //cache not enable
+                TRACE("cache control deny");
+                cache.remove(url);
+            }
+        }
+        else{ //cache not enable
+            TRACE("no info for cache");
+            cache.remove(url);
+        }
+    }
+    else if(statusCode == "304"){ //content not changed
+        data = cache.get(url)->getData();
+        TRACE(304)
+    }
     close(sock_fetch);
     return data;
 }
 
-string formatErrorMessage(){
+const char* getResponse(HttpRequest req){
+    string url = req.GetHost() +":"+std::to_string(req.GetPort())+req.GetPath();
+    TRACE("url is "<<url);
     
+    Webpage* pg = cache.get(url);
+    if(pg!=NULL){
+      TRACE("webpage in cache we get is "<<pg->getExpire());
+      if (!pg->isExpired()){
+          TRACE("webpage in cahce, not expired")
+          return pg->getData();
+      }
+      else{
+          if (pg->getETag() != "") {
+              TRACE("try to use ETag")
+              req.AddHeader("If-Non-Match", pg->getETag());
+          }
+          else if(pg->getLastModify() !=""){
+              TRACE("try to use last modify")
+              req.AddHeader("If-Modified-Since", pg->getLastModify());
+          }
+          return fetchResponse(req);
+      }
+    }
+    else{
+        TRACE("directly fetch");
+        return fetchResponse(req);
+    }
 }
+
+
 
 
 int main (int argc, char *argv[])
 {
   // command line parsing
+  
+    
   socklen_t len;
   int sock_desc = create_tcp_socket();
-
   struct sockaddr_in serv_addr; 
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;//inet_addr("127.0.0.1");
@@ -210,9 +392,6 @@ int main (int argc, char *argv[])
     const char * data;
     
     //get request from established connection
-    
-        
-    
     ssize_t size_recv;
     while((size_recv = recv(temp_sock_desc,buf_temp,BUFFERSIZE,0))>0){
         TRACE("message received is "<<buf_temp);
@@ -232,24 +411,10 @@ int main (int argc, char *argv[])
 	HttpRequest req;
 	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
-	size_t size_req = req.GetTotalLength();
-      
-      char* ip = get_ip((req.GetHost()).c_str());
-    
-    char buf_req[size_req];
-      bzero(buf_req, size_req);
-      req.FormatRequest(buf_req);
-        unsigned short port = htons(req.GetPort());
-      TRACE("ip is "<<ip<<endl)
-      TRACE("buff is "<<buf_req);
-      
 
-      //====fetch data from remote server===
+    //====fetch data from remote server===
     TRACE("Now fetching data from the remote server");
-    
-    //TRACE("data is:\n"<<buf_data)
-    
-    data = getResponse(ip, port, buf_req, size_req);
+    data = getResponse(req);
     TRACE("Data received, forwarding to the client")
     send(temp_sock_desc, data, strlen(data)+1 , 0);
     //TRACE("size is "<<sizeof(data))
