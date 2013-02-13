@@ -11,6 +11,7 @@
 #include <netdb.h>
 #include <time.h>
 #include <map>
+#include <sstream>
 
 #include "http-request.h"
 #include "http-response.h"
@@ -68,8 +69,12 @@ char * get_ip(const char * host){
 time_t convertTime(string ts){
     const char* format = "%a, %d %b %Y %H:%M:%S %Z";
     struct tm tm;
-    strptime(ts.c_str(), format, &tm);
-    return mktime(&tm);
+    if(strptime(ts.c_str(), format, &tm)==NULL){
+    	return 0;
+    }
+    else{
+    	return mktime(&tm);
+    }
 }
 
 class Webpage{
@@ -128,11 +133,13 @@ public:
     }
     
     void add(string url, Webpage pg){
-        storage[url]= pg;
+        //storage[url]= pg;
+	storage.erase(url);
+	storage.insert(map<string, Webpage>::value_type(url, pg));
     }
     
     void remove(string url){
-        storage.erase(storage.find(url));
+        storage.erase(url);
     }
     
 private:
@@ -243,7 +250,7 @@ long parseCacheControl(string s){
         size_t numStart = s.find('=');
         if(numStart != string::npos){
             long age = atol(s.substr(numStart+1).c_str());
-            TRACE("max age is "<<time);
+            //TRACE("max age is "<<time);
             return age;
         }
     }
@@ -251,7 +258,9 @@ long parseCacheControl(string s){
 }
 
 const char* fetchResponse(HttpRequest req){
-    string url = req.GetHost() +":"+std::to_string(req.GetPort())+req.GetPath();
+    ostringstream ss;
+    ss<< req.GetHost()<<":"<<req.GetPort()<<req.GetPath();
+    string url = ss.str();
     TRACE("url is "<<url);
     
     const char* host = (req.GetHost()).c_str();
@@ -274,6 +283,7 @@ const char* fetchResponse(HttpRequest req){
     size_t size_req = req.GetTotalLength();
     char buf_req[size_req];
     bzero(buf_req, size_req);
+    req.FormatRequest(buf_req);
     if(send(sock_fetch, buf_req, size_req, 0)<0){
       	cerr<<"send failed when fetching data from remote server"<<endl;
         exit(1);
@@ -293,8 +303,8 @@ const char* fetchResponse(HttpRequest req){
         string cacheControl = resp.FindHeader("Cache-Control");
         TRACE("expire as "<<expire<<"\nETag as "<<ETag<<"\ndate as "<<date<<"\nlastModi as "<<lastModi
               <<"\ncacheControl as "<<cacheControl)
-        if (expire != "") {
-            time_t expire_t = convertTime(expire);
+	time_t expire_t;
+        if (expire != "" &&(expire_t = convertTime(expire))!=0) {
             TRACE("add to cache with nomarl expire");
             Webpage pg(expire_t, lastModi, ETag, data);
             cache.add(url, pg);
@@ -326,7 +336,9 @@ const char* fetchResponse(HttpRequest req){
 }
 
 const char* getResponse(HttpRequest req){
-    string url = req.GetHost() +":"+std::to_string(req.GetPort())+req.GetPath();
+    ostringstream ss;
+    ss<< req.GetHost()<<":"<<req.GetPort()<<req.GetPath();
+    string url = ss.str();
     TRACE("url is "<<url);
     
     Webpage* pg = cache.get(url);
