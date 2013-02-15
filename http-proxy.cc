@@ -79,7 +79,7 @@ time_t convertTime(string ts){
 
 class Webpage{
 public:
-    Webpage(time_t expire, string lModify, string eTag, const char* dt){
+    Webpage(time_t expire, string lModify, string eTag, string dt){
         expireTime = expire;
         ETag = eTag;
         lastModify = lModify;
@@ -90,7 +90,7 @@ public:
         return expireTime;
     }
     
-    const char* getData(void){
+    string getData(void){
         return data;
     }
     
@@ -115,7 +115,7 @@ public:
 private:time_t expireTime;
     string lastModify;
     string ETag;
-    const char* data;
+    string data;
 };
 
 
@@ -155,7 +155,7 @@ private:
  * @param the socket that the request has been sent
  * @return response data, and the response header 
  */
-const char * fetchResponseData(int sckt, HttpResponse* response){
+string fetchResponseData(int sckt, HttpResponse* response){
     bool isHeader = true;
     bool isChunk = false;
     
@@ -226,11 +226,12 @@ const char * fetchResponseData(int sckt, HttpResponse* response){
                 }
           	}
           	else{
-                contentLeft -= recv_size;
-	      		TRACE("content left is "<<contentLeft)
-                if(contentLeft <=0){
-                    break;
-                }
+                	contentLeft -= recv_size;
+	      		//TRACE("content left is "<<contentLeft)
+			//TRACE("buf data is "<<buf_data)
+                	if(contentLeft <=0){
+                   		 break;
+                	}
             }//if end is determined by content-length
         }//not header part
     }//while for reading data
@@ -238,7 +239,7 @@ const char * fetchResponseData(int sckt, HttpResponse* response){
         cerr<<"ERROR on reading data"<<endl;
         exit(1);
     }
-    return buf_data.c_str();
+    return buf_data;
 }
 
 long parseCacheControl(string s){
@@ -257,7 +258,7 @@ long parseCacheControl(string s){
     return 0;
 }
 
-const char* fetchResponse(HttpRequest req){
+string fetchResponse(HttpRequest req){
     ostringstream ss;
     ss<< req.GetHost()<<":"<<req.GetPort()<<req.GetPath();
     string url = ss.str();
@@ -290,8 +291,8 @@ const char* fetchResponse(HttpRequest req){
     }
     TRACE("Message sent to the remote server")
     HttpResponse resp;
-    const char * data = fetchResponseData(sock_fetch, &resp);
-    
+    string data = fetchResponseData(sock_fetch, &resp);
+    TRACE("data is "<<data)
     string statusCode = resp.GetStatusCode();
     TRACE("status code is "<<statusCode);
     if (statusCode=="200") {
@@ -335,7 +336,7 @@ const char* fetchResponse(HttpRequest req){
     return data;
 }
 
-const char* getResponse(HttpRequest req){
+string getResponse(HttpRequest req){
     ostringstream ss;
     ss<< req.GetHost()<<":"<<req.GetPort()<<req.GetPath();
     string url = ss.str();
@@ -398,10 +399,9 @@ int main (int argc, char *argv[])
 	exit(1);
   }
   TRACE("accept successful");
-  //while(1){
+  while(1){
     string buf_data;
   	char buf_temp[BUFFERSIZE];
-    const char * data;
     
     //get request from established connection
     ssize_t size_recv;
@@ -421,19 +421,23 @@ int main (int argc, char *argv[])
 	}
 
 	HttpRequest req;
-	const char *buf3 = "GET http://www.google.com:80/ HTTP/1.1\r\n\r\n";
+	const char *buf3 = "GET http://www.emptypage.org:80/ HTTP/1.1\r\n\r\n";
 	req.ParseRequest(buf3, BUFFERSIZE);
 
     //====fetch data from remote server===
     TRACE("Now fetching data from the remote server");
-    data = getResponse(req);
+    const char * data;
+    string d = getResponse(req);
+    TRACE("main get response")
+    data = d.c_str();
+    TRACE("data is "<<data)
     TRACE("Data received, forwarding to the client")
     send(temp_sock_desc, data, strlen(data)+1 , 0);
     //TRACE("size is "<<sizeof(data))
-
+    TRACE("?")  
 
       TRACE("Done")
-  //}
+  }
   close(temp_sock_desc);
   close(sock_desc);
   return 0;
