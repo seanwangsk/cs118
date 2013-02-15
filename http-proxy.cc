@@ -42,6 +42,17 @@ int create_tcp_socket(){
     return sock;
 }
 
+class HttpException : public std::exception
+{
+public:
+    HttpException (const std::string &code, const std::string &reason) : m_reason (code+"/"+reason) { }
+    virtual ~HttpException () throw () { }
+    virtual const char* what() const throw ()
+    { return m_reason.c_str (); }
+private:
+    std::string m_reason;
+};
+
 
 /**
  * @brief convert hostname to ip address
@@ -56,12 +67,10 @@ char * get_ip(const char * host){
 	char *ip = (char*) malloc(iplen+1);
 	memset(ip,0,iplen+1);
 	if((hent = gethostbyname(host))==NULL){
-		printf("Can't find the hostname");
-		exit(1);
+		throw HttpException("404","Not found");
 	}
 	if(inet_ntop(AF_INET, (void *)hent->h_addr_list[0],ip,iplen)==NULL){
-		printf("Can't resolve host");
-		exit(1);
+		throw HttpException("503","Bad Gateway");
 	}
 	return ip;
 }
@@ -180,7 +189,7 @@ string fetchResponseData(int sckt, HttpResponse* response){
             }
             if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
                 //finish receiving the header part
-                string header = buf_data.substr(headerHead,headerTail+4);
+                string header = buf_data.substr(headerHead,headerTail+4 - headerHead + 1);
                 TRACE("header is:\n"<<header);
                 body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
                 TRACE("body is:\n"<<body<<"\n\n");
@@ -275,8 +284,7 @@ string fetchResponse(HttpRequest req){
     client.sin_addr.s_addr = inet_addr(ip);
     client.sin_port = port;
     if(connect(sock_fetch, (struct sockaddr*)&client, sizeof(client))<0){
-      	cerr<<"connect error when fetching data from remote server"<<endl;
-      	exit(1);
+      	throw HttpException("502", "Bad Gateway");
     }
     
     
@@ -287,7 +295,7 @@ string fetchResponse(HttpRequest req){
     req.FormatRequest(buf_req);
     if(send(sock_fetch, buf_req, size_req, 0)<0){
       	cerr<<"send failed when fetching data from remote server"<<endl;
-        exit(1);
+        throw HttpException("502", "Bad Gateway");
     }
     TRACE("Message sent to the remote server")
     HttpResponse resp;
@@ -367,16 +375,16 @@ string getResponse(HttpRequest req){
     }
 }
 
-HttpResponse createErrorMsg(string code){
+HttpResponse createErrorMsg(string reason){
     HttpResponse resp;
     resp.SetVersion("1.1");
+    size_t split = reason.find('/');
+    string code = reason.substr(0,split);
+    string msg = reason.substr(split+1);
     resp.SetStatusCode(code);
-    if(code == "404"){
-        resp.SetStatusMsg("Not Found");
-    }
+    resp.SetStatusMsg(msg);
     return resp;
 }
-
 
 
 
@@ -386,25 +394,25 @@ int main (int argc, char *argv[])
   
     
   socklen_t len;
-  int sock_desc = create_tcp_socket();
+  int sock_listen = create_tcp_socket();
   struct sockaddr_in serv_addr; 
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;//inet_addr("127.0.0.1");
   serv_addr.sin_port = htons(PORT);
-  if((bind(sock_desc, (struct sockaddr*)&serv_addr, sizeof(serv_addr)))<0){
+  if((bind(sock_listen, (struct sockaddr*)&serv_addr, sizeof(serv_addr)))<0){
  	 cerr<<"ERROR on binding"<<endl;
 	 exit(1);
   }
   TRACE("bind successful")
-  if(listen(sock_desc,20)<0){
+  if(listen(sock_listen,20)<0){
   	cerr<<"ERROR on listening"<<endl;
 	exit(1);
   }
   TRACE("listen succesful")
   struct sockaddr_in cli_addr;
   len = sizeof(cli_addr);
-  int temp_sock_desc = accept(sock_desc, (struct sockaddr*)&cli_addr, &len);
-  if(temp_sock_desc < 0){
+  int sock_request = accept(sock_listen, (struct sockaddr*)&cli_addr, &len);
+  if(sock_request < 0){
   	cerr<<"ERROR on accept"<<endl;
 	exit(1);
   }
@@ -415,7 +423,7 @@ int main (int argc, char *argv[])
     
     //get request from established connection
     ssize_t size_recv;
-    while((size_recv = recv(temp_sock_desc,buf_temp,BUFFERSIZE,0))>0){
+    while((size_recv = recv(sock_request,buf_temp,BUFFERSIZE,0))>0){
         TRACE("message received is "<<buf_temp);
         TRACE("size recieved is "<<size_recv)
         buf_data.append(buf_temp,size_recv);
@@ -424,44 +432,64 @@ int main (int argc, char *argv[])
             break;
         }
     }
-      
-    //@TODO if size received is no bigger than 0, then just ignore this receive
-    if(size_recv<0){
-		cerr<<"ERROR on reading data"<<endl;
-		exit(1);
-	}
-      HttpResponse resp = createErrorMsg("404");
-      char respD[resp.GetTotalLength()];
-      resp.FormatResponse(respD);
-      send(temp_sock_desc, respD, strlen(respD)+1, 0);
-      close(temp_sock_desc);
-      close(sock_desc);
-      
-	const char *buf3 = "GET http://www.emptypage.org:80/ HTTP/1.1\r\n\r\n";
-	
-    HttpRequest req;
       try{
-          req.ParseRequest(buf3, BUFFERSIZE);
+            //@TODO if size received is no bigger than 0, then just ignore this receive
+            if(size_recv<0){
+                throw ParseException("400/Bad Request");
+            }
+                            
+            const char *buf3 = "GET http://www.emptypage.org:80/ HTTP/1.1\r\n\r\n";
+            
+            HttpRequest req;
+            req.ParseRequest(buf3, BUFFERSIZE);
+            
+          //====fetch data from remote server===
+            TRACE("Now fetching data from the remote server");
+            const char * data;          
+          
+          
+          //@TODO if response not well formatted, then resend, if 3 time failure, then report to requester, this part should be surrounded by try catch
+              try{
+                  string d = getResponse(req);
+              
+                    TRACE("main get response")
+                    data = d.c_str();
+                    TRACE("data is "<<data)
+                    TRACE("Data received, forwarding to the client")
+                    send(sock_request, data, strlen(data)+1 , 0);
+                    //TRACE("size is "<<sizeof(data))
+              
+              }
+              catch(ParseException ex){
+                  TRACE("Parse Exception for response")
+                  string reason = "502/BadGateway";
+                  HttpResponse resp = createErrorMsg(reason);
+                  char respD[resp.GetTotalLength()];
+                  resp.FormatResponse(respD);
+                  send(sock_request, respD, strlen(respD)+1, 0);
+              }
+              catch(HttpException ex){
+                  HttpResponse resp = createErrorMsg(ex.what());
+                  char respD[resp.GetTotalLength()];
+                  resp.FormatResponse(respD);
+                  send(sock_request, respD, strlen(respD)+1, 0);
+              }
+              TRACE("Done")
       }
-      catch(ParseException ex){
-          //ex.what()
-      }
-    //====fetch data from remote server===
-    TRACE("Now fetching data from the remote server");
-    const char * data;
-    string d = getResponse(req);
-    TRACE("main get response")
-    data = d.c_str();
-    TRACE("data is "<<data)
-    TRACE("Data received, forwarding to the client")
-    send(temp_sock_desc, data, strlen(data)+1 , 0);
-    //TRACE("size is "<<sizeof(data))
-    TRACE("?")  
+      catch(ParseException ex){ //Request invalid
+          TRACE("Parse Exception for request")
+          HttpResponse resp = createErrorMsg(ex.what());
+          char respD[resp.GetTotalLength()];
+          resp.FormatResponse(respD);
+          send(sock_request, respD, strlen(respD)+1, 0);
 
-      TRACE("Done")
+      }
+      catch(exception ex){
+          TRACE("unexcepted exception "<<ex.what())
+      }
   }
-  close(temp_sock_desc);
-  close(sock_desc);
+  close(sock_request);
+  close(sock_listen);
   return 0;
 }
 

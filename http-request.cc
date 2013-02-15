@@ -38,7 +38,7 @@ HttpRequest::ParseRequest (const char *buffer, size_t size)
   const char *endline = (const char *)memmem (curPos, size - (curPos-buffer), "\r\n", 2);
   if (endline == 0)
     {
-      throw ParseException ("HTTP Request doesn't end with \\r\\n");
+      throw ParseException ("400/HTTP Request doesn't end with \\r\\n");
     }
 
   boost::char_separator<char> sep(" ");
@@ -49,19 +49,19 @@ HttpRequest::ParseRequest (const char *buffer, size_t size)
   // 1. Request type
   boost::tokenizer< boost::char_separator<char> >::iterator token = tokens.begin ();
   if (token == tokens.end ())
-    throw ParseException ("Incorrectly formatted request");
+    throw ParseException ("400/Incorrectly formatted request");
 
   // TRACE ("Token1: " << *token);
   if (*token != "GET")
     {
-      throw ParseException ("Request is not GET");
+      throw ParseException ("501/Request is not GET");
     }
   SetMethod (GET);
 
   // 2. Request path
   ++ token;
   if (token == tokens.end ())
-    throw ParseException ("Incorrectly formatted request");
+    throw ParseException ("400/Incorrectly formatted request");
 
   // TRACE ("Token2: " << *token);
   size_t pos = token->find ("://");
@@ -79,7 +79,7 @@ HttpRequest::ParseRequest (const char *buffer, size_t size)
       pos += 3;
       size_t posSlash = token->find ("/", pos);
       if (posSlash == string::npos)
-        throw ParseException ("Request line is not correctly formatted");
+        throw ParseException ("400/Request line is not correctly formatted");
 
       // TRACE (string (curPos, endline-curPos));
       // TRACE (*token);
@@ -113,12 +113,12 @@ HttpRequest::ParseRequest (const char *buffer, size_t size)
   // 3. Request version
   ++token;
   if (token == tokens.end ())
-    throw ParseException ("Incorrectly formatted request");
+    throw ParseException ("400/Incorrectly formatted request");
   // TRACE ("Token3: " << *token);
   size_t posHTTP = token->find ("HTTP/");
   if (posHTTP == string::npos)
     {
-      throw ParseException ("Incorrectly formatted HTTP request");
+      throw ParseException ("400/Incorrectly formatted HTTP request");
     }
   string version = token->substr (5, token->size () - 5);
   // TRACE (version);
@@ -133,7 +133,7 @@ size_t
 HttpRequest::GetTotalLength () const
 {
   if (m_method != GET)
-    throw ParseException ("Only GET method is supported");
+    throw ParseException ("501/Only GET method is supported");
       
   size_t len = 4; // 'GET '
   len += m_path.size () + 1; // '<path> '
