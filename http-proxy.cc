@@ -416,23 +416,30 @@ int main (int argc, char *argv[])
   	cerr<<"ERROR on accept"<<endl;
 	exit(1);
   }
+  bool isEnd = false;
   TRACE("accept successful");
   while(1){
-    string buf_data;
-  	char buf_temp[BUFFERSIZE];
-    
-    //get request from established connection
-    ssize_t size_recv;
-    while((size_recv = recv(sock_request,buf_temp,BUFFERSIZE,0))>0){
-        TRACE("message received is "<<buf_temp);
-        TRACE("size recieved is "<<size_recv)
-        buf_data.append(buf_temp,size_recv);
-        unsigned long i = 0;
-        if((i = buf_data.find("\r\n\r\n"))!=string::npos){
-            break;
-        }
-    }
-      try{
+        string buf_data;
+        char buf_temp[BUFFERSIZE];
+        try{
+            //get request from established connection
+            ssize_t size_recv;
+            while((size_recv = recv(sock_request,buf_temp,BUFFERSIZE,0))>0){
+                TRACE("message received is "<<buf_temp);
+                TRACE("size recieved is "<<size_recv)
+                if(strchr(buf_temp, '^]')!=NULL){
+                    isEnd = true;
+                    break;
+                }
+                buf_data.append(buf_temp,size_recv);
+                
+                if((buf_data.find("\r\n\r\n"))!=string::npos){
+                    break;
+                }
+            }
+            if(isEnd){
+                break;
+            }
             //@TODO if size received is no bigger than 0, then just ignore this receive
             if(size_recv<0){
                 throw ParseException("400/Bad Request");
