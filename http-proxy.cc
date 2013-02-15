@@ -189,7 +189,7 @@ string fetchResponseData(int sckt, HttpResponse* response){
             }
             if((headerTail = buf_data.find("\r\n\r\n",headerHead))!=string::npos){
                 //finish receiving the header part
-                string header = buf_data.substr(headerHead,headerTail+4 - headerHead + 1);
+                string header = buf_data.substr(headerHead,headerTail+4 - headerHead);
                 TRACE("header is:\n"<<header);
                 body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
                 TRACE("body is:\n"<<body<<"\n\n");
@@ -438,7 +438,7 @@ int main (int argc, char *argv[])
                 throw ParseException("400/Bad Request");
             }
                             
-            const char *buf3 = "GET http://www.emptypage.org:80/ HTTP/1.1\r\n\r\n";
+            const char *buf3 = "GET http://www.zhiyangwang.org:80/ HTTP/1.1\r\n\r\n";
             
             HttpRequest req;
             req.ParseRequest(buf3, BUFFERSIZE);
@@ -456,7 +456,7 @@ int main (int argc, char *argv[])
                     data = d.c_str();
                     TRACE("data is "<<data)
                     TRACE("Data received, forwarding to the client")
-                    send(sock_request, data, strlen(data)+1 , 0);
+                    send(sock_request, data, strlen(data) , 0);
                     //TRACE("size is "<<sizeof(data))
               
               }
@@ -466,13 +466,13 @@ int main (int argc, char *argv[])
                   HttpResponse resp = createErrorMsg(reason);
                   char respD[resp.GetTotalLength()];
                   resp.FormatResponse(respD);
-                  send(sock_request, respD, strlen(respD)+1, 0);
+                  send(sock_request, respD, strlen(respD), 0);
               }
               catch(HttpException ex){
                   HttpResponse resp = createErrorMsg(ex.what());
                   char respD[resp.GetTotalLength()];
                   resp.FormatResponse(respD);
-                  send(sock_request, respD, strlen(respD)+1, 0);
+                  send(sock_request, respD, strlen(respD), 0);
               }
               TRACE("Done")
       }
@@ -481,7 +481,7 @@ int main (int argc, char *argv[])
           HttpResponse resp = createErrorMsg(ex.what());
           char respD[resp.GetTotalLength()];
           resp.FormatResponse(respD);
-          send(sock_request, respD, strlen(respD)+1, 0);
+          send(sock_request, respD, strlen(respD), 0);
 
       }
       catch(exception ex){
