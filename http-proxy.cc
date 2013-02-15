@@ -367,6 +367,16 @@ string getResponse(HttpRequest req){
     }
 }
 
+HttpResponse createErrorMsg(string code){
+    HttpResponse resp;
+    resp.SetVersion("1.1");
+    resp.SetStatusCode(code);
+    if(code == "404"){
+        resp.SetStatusMsg("Not Found");
+    }
+    return resp;
+}
+
 
 
 
@@ -414,16 +424,28 @@ int main (int argc, char *argv[])
             break;
         }
     }
-    
+      
+    //@TODO if size received is no bigger than 0, then just ignore this receive
     if(size_recv<0){
 		cerr<<"ERROR on reading data"<<endl;
 		exit(1);
 	}
-
-	HttpRequest req;
+      HttpResponse resp = createErrorMsg("404");
+      char respD[resp.GetTotalLength()];
+      resp.FormatResponse(respD);
+      send(temp_sock_desc, respD, strlen(respD)+1, 0);
+      close(temp_sock_desc);
+      close(sock_desc);
+      
 	const char *buf3 = "GET http://www.emptypage.org:80/ HTTP/1.1\r\n\r\n";
-	req.ParseRequest(buf3, BUFFERSIZE);
-
+	
+    HttpRequest req;
+      try{
+          req.ParseRequest(buf3, BUFFERSIZE);
+      }
+      catch(ParseException ex){
+          //ex.what()
+      }
     //====fetch data from remote server===
     TRACE("Now fetching data from the remote server");
     const char * data;
