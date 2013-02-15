@@ -416,7 +416,6 @@ int main (int argc, char *argv[])
   	cerr<<"ERROR on accept"<<endl;
 	exit(1);
   }
-  bool isEnd = false;
   TRACE("accept successful");
   while(1){
         string buf_data;
@@ -425,19 +424,16 @@ int main (int argc, char *argv[])
             //get request from established connection
             ssize_t size_recv;
             while((size_recv = recv(sock_request,buf_temp,BUFFERSIZE,0))>0){
-                TRACE("message received is "<<buf_temp);
+                TRACE("message received is "<<buf_temp)
                 TRACE("size recieved is "<<size_recv)
-                if(strchr(buf_temp, '^]')!=NULL){
-                    isEnd = true;
-                    break;
-                }
+                
                 buf_data.append(buf_temp,size_recv);
                 
                 if((buf_data.find("\r\n\r\n"))!=string::npos){
                     break;
                 }
             }
-            if(isEnd){
+            if(size_recv == 0){ //the other side close the connection
                 break;
             }
             //@TODO if size received is no bigger than 0, then just ignore this receive
@@ -493,6 +489,7 @@ int main (int argc, char *argv[])
       }
       catch(exception ex){
           TRACE("unexcepted exception "<<ex.what())
+          break;
       }
   }
   close(sock_request);
