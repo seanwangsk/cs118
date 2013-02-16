@@ -196,9 +196,8 @@ string fetchResponseData(int sckt, HttpResponse* response){
                 string header = buf_data.substr(headerHead,headerTail+4 - headerHead);
                 TRACE("header is:\n"<<header);
                 body = buf_data.substr(headerTail+sizeof("\r\n\r\n")-1);
-                TRACE("body is:\n"<<body<<"\n\n");
+                TRACE("body is:\n"<<body.substr(0,20)<<"\n\n");
                 
-                TRACE("the size of header.c_str is "<<strlen(header.c_str())<<" and the size of header.length is "<<header.length()<<" and end-start is "<<(headerTail - headerHead));
                 response->ParseResponse(header.c_str(), header.length());
                 
                 string contentLength = response->FindHeader("Content-Length");
@@ -214,7 +213,7 @@ string fetchResponseData(int sckt, HttpResponse* response){
                         TRACE("chunked")
                         isChunk = true;
                         if(body.find("0\r\n\r\n")!=string::npos){
-                            TRACE(body.substr(body.find("0\r\n\r\n")))
+                            //TRACE(body.substr(body.find("0\r\n\r\n")))
                             break;
                         }
                     }
@@ -234,7 +233,7 @@ string fetchResponseData(int sckt, HttpResponse* response){
           	if(isChunk){
                 body = buf_temp;
                 if(body.find("0\r\n\r\n")!=string::npos){
-	      	  		TRACE(body.substr(body.find("0\r\n\r\n")))
+	      	    //TRACE(body.substr(body.find("0\r\n\r\n")))
                     break;
                 }
           	}
@@ -247,6 +246,7 @@ string fetchResponseData(int sckt, HttpResponse* response){
                 	}
             }//if end is determined by content-length
         }//not header part
+	bzero(buf_temp,BUFFERSIZE);
     }//while for reading data
     if(recv_size < 0){
         cerr<<"ERROR on reading data"<<endl;
@@ -304,7 +304,7 @@ string fetchResponse(HttpRequest req){
     TRACE("Message sent to the remote server")
     HttpResponse resp;
     string data = fetchResponseData(sock_fetch, &resp);
-    TRACE("data is "<<data)
+    //TRACE("data is "<<data)
     string statusCode = resp.GetStatusCode();
     TRACE("status code is "<<statusCode);
     if (statusCode=="200") {
@@ -385,6 +385,7 @@ HttpResponse createErrorMsg(string reason){
     size_t split = reason.find('/');
     string code = reason.substr(0,split);
     string msg = reason.substr(split+1);
+    TRACE("code is "<<code<<" msg is "<<msg)
     resp.SetStatusCode(code);
     resp.SetStatusMsg(msg);
     return resp;
@@ -400,7 +401,7 @@ void* service(void * sock){
             ssize_t size_recv;
             while((size_recv = recv(sock_request,buf_temp,BUFFERSIZE,0))>0){
                 TRACE("message received is "<<buf_temp)
-                TRACE("size recieved is "<<size_recv)
+                //TRACE("size recieved is "<<size_recv)
                 
                 buf_data.append(buf_temp,size_recv);
                 
@@ -430,7 +431,7 @@ void* service(void * sock){
                 
                 TRACE("main get response")
                 data = d.c_str();
-                TRACE("data is "<<data)
+                //TRACE("data is "<<data)
                 TRACE("Data received, forwarding to the client")
                 send(sock_request, data, strlen(data) , 0);
                 //TRACE("size is "<<sizeof(data))
@@ -457,7 +458,7 @@ void* service(void * sock){
             HttpResponse resp = createErrorMsg(ex.what());
             char respD[resp.GetTotalLength()];
             resp.FormatResponse(respD);
-            send(sock_request, respD, strlen(respD), 0);
+            send(sock_request, respD, resp.GetTotalLength(), 0);
         }
         catch(exception ex){
             TRACE("unexcepted exception "<<ex.what())
