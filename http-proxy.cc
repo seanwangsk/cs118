@@ -250,7 +250,7 @@ string fetchResponseData(int sckt, HttpResponse* response){
     }//while for reading data
     if(recv_size < 0){
         cerr<<"ERROR on reading data"<<endl;
-        exit(1);
+        throw HttpException("502", "Bad Gateway");
     }
     return buf_data;
 }
@@ -460,7 +460,6 @@ void* service(void * sock){
             char respD[resp.GetTotalLength()];
             resp.FormatResponse(respD);
             send(sock_request, respD, strlen(respD), 0);
-            
         }
         catch(exception ex){
             TRACE("unexcepted exception "<<ex.what())
@@ -512,18 +511,18 @@ int main (int argc, char *argv[])
       int sock_request = accept(sock_listen, (struct sockaddr*)&cli_addr, &len);
       if(sock_request < 0){
           cerr<<"ERROR on accept"<<endl;
-          exit(1);
       }
-      TRACE("accept successful");
-      
-      //TODO create thread to handle the requeset
-      pthread_mutex_lock(&count_mutex);
-      thread_count++;
-      pthread_mutex_unlock(&count_mutex);
+      else{
+          TRACE("accept successful");
+          
+          //TODO create thread to handle the requeset
+          pthread_mutex_lock(&count_mutex);
+          thread_count++;
+          pthread_mutex_unlock(&count_mutex);
 
-      pthread_t t;
-      pthread_create(&t, NULL, service, (void*)&sock_listen);
-      
+          pthread_t t;
+          pthread_create(&t, NULL, service, (void*)&sock_request);
+      }
   }
   close(sock_listen);
   return 0;
