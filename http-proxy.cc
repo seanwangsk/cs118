@@ -416,10 +416,8 @@ void* service(void * sock){
                 throw ParseException("400/Bad Request");
             }
             
-            const char *buf3 = "GET http://www.zhiyangwang.org:80/ HTTP/1.1\r\n\r\n";
-            
             HttpRequest req;
-            req.ParseRequest(buf3, BUFFERSIZE);
+            req.ParseRequest(buf_data.c_str(), buf_data.size());
             
             //====fetch data from remote server===
             TRACE("Now fetching data from the remote server");
