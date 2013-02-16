@@ -109,7 +109,8 @@ public:
     
     bool isExpired(){
         time_t now = time(NULL);
-        if(difftime(now, expireTime)>0){
+	TRACE("diff time is "<<difftime(expireTime, now)<<" as now is "<<now<<" and expire is "<<expireTime);
+        if(difftime(expireTime, now)<0){
             return true;
         }
         else{
@@ -318,10 +319,16 @@ string fetchResponse(HttpRequest req){
               <<"\ncacheControl as "<<cacheControl)
 	    time_t expire_t;
         time_t now = time(NULL);
-        if (expire != "" &&(expire_t = convertTime(expire))!=0 && difftime(now, expire_t)>0) {
-            TRACE("add to cache with nomarl expire");
-            Webpage pg(expire_t, lastModi, ETag, data);
-            cache.add(url, pg);
+        if (expire != "") {
+		if((expire_t = convertTime(expire))!=0 && difftime(expire_t, now)>0){
+            		TRACE("add to cache with nomarl expire");
+            		Webpage pg(expire_t, lastModi, ETag, data);
+            		cache.add(url, pg);
+		}
+		else{
+			TRACE("expire exists but not valid")
+			cache.remove(url);
+		}
         }
         else if(cacheControl!=""){
             long maxAge = 0;
