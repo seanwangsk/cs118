@@ -12,6 +12,7 @@
 #include <time.h>
 #include <map>
 #include <sstream>
+#include <pthread.h>
 
 #include "http-request.h"
 #include "http-response.h"
@@ -28,10 +29,13 @@
 
 #define PORT 19989
 #define BUFFERSIZE 65535
-
+#define MAXCONNECTION 2
 using namespace std;
 
-
+pthread_mutex_t count_mutex;
+pthread_cond_t count_threshod_cv;
+pthread_mutex_t cache_mutex;
+int thread_count;
 
 int create_tcp_socket(){
     int sock;
@@ -386,38 +390,9 @@ HttpResponse createErrorMsg(string reason){
     return resp;
 }
 
-
-
-int main (int argc, char *argv[])
-{
-  // command line parsing
-  
-    
-  socklen_t len;
-  int sock_listen = create_tcp_socket();
-  struct sockaddr_in serv_addr; 
-  serv_addr.sin_family = AF_INET;
-  serv_addr.sin_addr.s_addr = INADDR_ANY;//inet_addr("127.0.0.1");
-  serv_addr.sin_port = htons(PORT);
-  if((bind(sock_listen, (struct sockaddr*)&serv_addr, sizeof(serv_addr)))<0){
- 	 cerr<<"ERROR on binding"<<endl;
-	 exit(1);
-  }
-  TRACE("bind successful")
-  if(listen(sock_listen,20)<0){
-  	cerr<<"ERROR on listening"<<endl;
-	exit(1);
-  }
-  TRACE("listen succesful")
-  struct sockaddr_in cli_addr;
-  len = sizeof(cli_addr);
-  int sock_request = accept(sock_listen, (struct sockaddr*)&cli_addr, &len);
-  if(sock_request < 0){
-  	cerr<<"ERROR on accept"<<endl;
-	exit(1);
-  }
-  TRACE("accept successful");
-  while(1){
+void* service(void * sock){
+    int sock_request = *((int *) sock);
+    while(1){
         string buf_data;
         char buf_temp[BUFFERSIZE];
         try{
@@ -440,59 +415,116 @@ int main (int argc, char *argv[])
             if(size_recv<0){
                 throw ParseException("400/Bad Request");
             }
-                            
+            
             const char *buf3 = "GET http://www.zhiyangwang.org:80/ HTTP/1.1\r\n\r\n";
             
             HttpRequest req;
             req.ParseRequest(buf3, BUFFERSIZE);
             
-          //====fetch data from remote server===
+            //====fetch data from remote server===
             TRACE("Now fetching data from the remote server");
-            const char * data;          
-          
-          
-          //@TODO if response not well formatted, then resend, if 3 time failure, then report to requester, this part should be surrounded by try catch
-              try{
-                  string d = getResponse(req);
-              
-                    TRACE("main get response")
-                    data = d.c_str();
-                    TRACE("data is "<<data)
-                    TRACE("Data received, forwarding to the client")
-                    send(sock_request, data, strlen(data) , 0);
-                    //TRACE("size is "<<sizeof(data))
-              
-              }
-              catch(ParseException ex){
-                  TRACE("Parse Exception for response")
-                  string reason = "502/BadGateway";
-                  HttpResponse resp = createErrorMsg(reason);
-                  char respD[resp.GetTotalLength()];
-                  resp.FormatResponse(respD);
-                  send(sock_request, respD, strlen(respD), 0);
-              }
-              catch(HttpException ex){
-                  HttpResponse resp = createErrorMsg(ex.what());
-                  char respD[resp.GetTotalLength()];
-                  resp.FormatResponse(respD);
-                  send(sock_request, respD, strlen(respD), 0);
-              }
-              TRACE("Done")
-      }
-      catch(ParseException ex){ //Request invalid
-          TRACE("Parse Exception for request")
-          HttpResponse resp = createErrorMsg(ex.what());
-          char respD[resp.GetTotalLength()];
-          resp.FormatResponse(respD);
-          send(sock_request, respD, strlen(respD), 0);
+            const char * data;
+            
+            
+            //@TODO if response not well formatted, then resend, if 3 time failure, then report to requester, this part should be surrounded by try catch
+            try{
+                string d = getResponse(req);
+                
+                TRACE("main get response")
+                data = d.c_str();
+                TRACE("data is "<<data)
+                TRACE("Data received, forwarding to the client")
+                send(sock_request, data, strlen(data) , 0);
+                //TRACE("size is "<<sizeof(data))
+                
+            }
+            catch(ParseException ex){
+                TRACE("Parse Exception for response")
+                string reason = "502/BadGateway";
+                HttpResponse resp = createErrorMsg(reason);
+                char respD[resp.GetTotalLength()];
+                resp.FormatResponse(respD);
+                send(sock_request, respD, strlen(respD), 0);
+            }
+            catch(HttpException ex){
+                HttpResponse resp = createErrorMsg(ex.what());
+                char respD[resp.GetTotalLength()];
+                resp.FormatResponse(respD);
+                send(sock_request, respD, strlen(respD), 0);
+            }
+            TRACE("Done")
+        }
+        catch(ParseException ex){ //Request invalid
+            TRACE("Parse Exception for request")
+            HttpResponse resp = createErrorMsg(ex.what());
+            char respD[resp.GetTotalLength()];
+            resp.FormatResponse(respD);
+            send(sock_request, respD, strlen(respD), 0);
+            
+        }
+        catch(exception ex){
+            TRACE("unexcepted exception "<<ex.what())
+            break;
+        }
+    }
+    close(sock_request);
+    pthread_mutex_lock(&count_mutex);
+    thread_count --;
+    pthread_cond_signal(&count_threshod_cv);
+    pthread_mutex_unlock(&count_mutex);
+    pthread_exit(NULL);
+}
 
-      }
-      catch(exception ex){
-          TRACE("unexcepted exception "<<ex.what())
-          break;
-      }
+
+int main (int argc, char *argv[])
+{
+    
+  thread_count = 0;
+  pthread_mutex_init(&count_mutex, NULL);
+  pthread_cond_init(&count_threshod_cv, NULL);
+  pthread_mutex_init(&cache_mutex, NULL);
+    
+  int sock_listen = create_tcp_socket();
+  struct sockaddr_in serv_addr;
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_addr.s_addr = INADDR_ANY;//inet_addr("127.0.0.1");
+  serv_addr.sin_port = htons(PORT);
+  if((bind(sock_listen, (struct sockaddr*)&serv_addr, sizeof(serv_addr)))<0){
+ 	 cerr<<"ERROR on binding"<<endl;
+	 exit(1);
   }
-  close(sock_request);
+  TRACE("bind successful")
+  if(listen(sock_listen,20)<0){
+  	cerr<<"ERROR on listening"<<endl;
+	exit(1);
+  }
+  TRACE("listen succesful")
+    
+  while (1) {
+      pthread_mutex_lock(&count_mutex);
+      if(thread_count >= MAXCONNECTION){
+          pthread_cond_wait(&count_threshod_cv, &count_mutex);
+      }
+      pthread_mutex_unlock(&count_mutex);
+      
+      struct sockaddr_in cli_addr;
+      socklen_t len = sizeof(cli_addr);
+      int sock_request = accept(sock_listen, (struct sockaddr*)&cli_addr, &len);
+      if(sock_request < 0){
+          cerr<<"ERROR on accept"<<endl;
+          exit(1);
+      }
+      TRACE("accept successful");
+      
+      //TODO create thread to handle the requeset
+      pthread_mutex_lock(&count_mutex);
+      thread_count++;
+      pthread_mutex_unlock(&count_mutex);
+
+      pthread_t t;
+      pthread_create(&t, NULL, service, (void*)&sock_listen);
+      
+  }
   close(sock_listen);
   return 0;
 }
