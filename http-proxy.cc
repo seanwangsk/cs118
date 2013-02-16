@@ -109,7 +109,7 @@ public:
     
     bool isExpired(){
         time_t now = time(NULL);
-        if(difftime(expireTime, now)>0){
+        if(difftime(now, expireTime)>0){
             return true;
         }
         else{
@@ -316,8 +316,9 @@ string fetchResponse(HttpRequest req){
         string cacheControl = resp.FindHeader("Cache-Control");
         TRACE("expire as "<<expire<<"\nETag as "<<ETag<<"\ndate as "<<date<<"\nlastModi as "<<lastModi
               <<"\ncacheControl as "<<cacheControl)
-	time_t expire_t;
-        if (expire != "" &&(expire_t = convertTime(expire))!=0) {
+	    time_t expire_t;
+        time_t now = time(NULL);
+        if (expire != "" &&(expire_t = convertTime(expire))!=0 && difftime(now, expire_t)>0) {
             TRACE("add to cache with nomarl expire");
             Webpage pg(expire_t, lastModi, ETag, data);
             cache.add(url, pg);
