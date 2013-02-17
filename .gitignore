@@ -3,3 +3,6 @@ build/
 sm
 client
 http-proxy
+basic*
+*.b
+portconf
