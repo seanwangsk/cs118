@@ -145,24 +145,31 @@ private:time_t expireTime;
 class Cache{
 public:
     Webpage* get(string url){
+        pthread_mutex_lock(cache_mutex);
         map<string,Webpage>::iterator it;
         it = storage.find(url);
         if(it == storage.end()){
+            pthread_mutex_unlock(cache_mutex);
             return NULL;
         }
         else{
+            pthread_mutex_unlock(cache_mutex);
             return &it->second;
         }
     }
     
     void add(string url, Webpage pg){
         //storage[url]= pg;
-	storage.erase(url);
-	storage.insert(map<string, Webpage>::value_type(url, pg));
+        pthread_mutex_lock(cache_mutex);
+        storage.erase(url);
+        storage.insert(map<string, Webpage>::value_type(url, pg));
+        pthread_mutex_unlock(cache_mutex);
     }
     
     void remove(string url){
+        pthread_mutex_lock(cache_mutex);
         storage.erase(url);
+        pthread_mutex_unlock(cache_mutex);
     }
     
 private:
