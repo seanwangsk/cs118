@@ -13,12 +13,11 @@
 #include <map>
 #include <sstream>
 #include <pthread.h>
-#include <boost/date_time.hpp>
 
 #include "http-request.h"
 #include "http-response.h"
 
-#define _DEBUG 1
+//#define _DEBUG 1
 
 #ifdef _DEBUG
 #include <iostream>
@@ -30,7 +29,7 @@
 
 #define PORT 19989
 #define BUFFERSIZE 65535
-#define MAXCONNECTION 2
+#define MAXCONNECTION 10
 using namespace std;
 
 pthread_mutex_t count_mutex;
@@ -80,22 +79,15 @@ char * get_ip(const char * host){
 	return ip;
 }
 
-namespace bt = boost::posix_time;
-const std::locale format = std::locale(std::locale::classic(),new bt::time_input_facet("%a, %d %b %Y %H:%M:%S %Z"));
-
 time_t convertTime(string ts){
-    bt::ptime pt;
-    std::istringstream is(s);
-    is.imbue(format);
-    is >> pt;
-    
-    if(pt != bt::ptime())){
-        bt::ptime timet_start(boost::gregorian::date(1970,1,1));
-        bt::time_duration diff = pt - timet_start;
-        return diff.ticks()/bt::time_duration::rep_type::ticks_per_second;
+    const char* format = "%a, %d %b %Y %H:%M:%S %Z";
+    struct tm tm;
+    if(strptime(ts.c_str(), format, &tm)==NULL){
+    	return 0;
     }
     else{
-        return 0;
+    	tm.tm_hour = tm.tm_hour-8;//to la time
+    	return mktime(&tm);
     }
 }
 
