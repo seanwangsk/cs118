@@ -1,0 +1,7 @@
+Code:
+We just put all the code in http-proxy.cc
+
+Design:
+Cache: inplemented using map
+Multi-request: create pthread for each socket, sharing a thread count protected by conditional lock. If main thread receives new request when there are already 10 requests, the main thread will accept until one request finish and send conditional unlock notification.
+Response end detection: If encoded by chunk, then detect "0\r\n\r\n", otherwise count the content length.

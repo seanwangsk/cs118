@@ -17,7 +17,7 @@
 #include "http-request.h"
 #include "http-response.h"
 
-//#define _DEBUG 1
+#define _DEBUG 1
 
 #ifdef _DEBUG
 #include <iostream>
@@ -27,10 +27,16 @@
 #endif // _DEBUG
 
 
-#define PORT 19989
+#define PORT 14805
 #define BUFFERSIZE 65535
 #define MAXCONNECTION 10
+
+#define pthread_mutex_lock(x) pthread_mutex_lock(x); std::cout<<"lock "<<x<<endl;
+#define pthread_mutex_unlock(x) pthread_mutex_unlock(x); std::cout<<"unlock "<<x<<endl;
+
+
 using namespace std;
+
 
 pthread_mutex_t count_mutex;
 pthread_cond_t count_threshod_cv;
@@ -320,15 +326,20 @@ string fetchResponse(HttpRequest req){
               <<"\ncacheControl as "<<cacheControl)
 	    time_t expire_t;
         time_t now = time(NULL);
+	TRACE("try to add to cache")
         if (expire != "") {
 		if((expire_t = convertTime(expire))!=0 && difftime(expire_t, now)>0){
-            		TRACE("add to cache with nomarl expire");
+            		TRACE("add to cache with normal expire");
             		Webpage pg(expire_t, lastModi, ETag, data);
+                	pthread_mutex_lock(&cache_mutex);
             		cache.add(url, pg);
+                	pthread_mutex_unlock(&cache_mutex);
 		}
 		else{
 			TRACE("expire exists but not valid")
+                	pthread_mutex_lock(&cache_mutex);
 			cache.remove(url);
+                	pthread_mutex_unlock(&cache_mutex);
 		}
         }
         else if(cacheControl!=""){
@@ -337,30 +348,31 @@ string fetchResponse(HttpRequest req){
                 time_t  expire_t = convertTime(date) + maxAge;
                 TRACE("add to cache with cache control");
                 Webpage pg(expire_t, lastModi, ETag, data);
-                pthread_mutex_lock(cache_mutex);
+                pthread_mutex_lock(&cache_mutex);
                 cache.add(url, pg);
-                pthread_mutex_unlock(cache_mutex);
+                pthread_mutex_unlock(&cache_mutex);
             }
             else{   //cache not enable
                 TRACE("cache control deny");
-                pthread_mutex_lock(cache_mutex);
+                pthread_mutex_lock(&cache_mutex);
                 cache.remove(url);
-                pthread_mutex_unlock(cache_mutex);
+                pthread_mutex_unlock(&cache_mutex);
             }
         }
         else{ //cache not enable
             TRACE("no info for cache");
-            pthread_mutex_lock(cache_mutex);
+            pthread_mutex_lock(&cache_mutex);
             cache.remove(url);
-            pthread_mutex_unlock(cache_mutex);
+            pthread_mutex_unlock(&cache_mutex);
         }
     }
     else if(statusCode == "304"){ //content not changed
-        pthread_mutex_lock(cache_mutex);
+        pthread_mutex_lock(&cache_mutex);
         data = cache.get(url)->getData();
-        pthread_mutex_unlock(cache_mutex);
+        pthread_mutex_unlock(&cache_mutex);
         TRACE(304)
     }
+    TRACE("finish adding cache")
     close(sock_fetch);
     return data;
 }
@@ -370,32 +382,32 @@ string getResponse(HttpRequest req){
     ss<< req.GetHost()<<":"<<req.GetPort()<<req.GetPath();
     string url = ss.str();
     TRACE("url is "<<url);
-    pthread_mutex_lock(cache_mutex);
+    TRACE("try to get from cache")
+    pthread_mutex_lock(&cache_mutex);
     Webpage* pg = cache.get(url);
     if(pg!=NULL){
       TRACE("webpage in cache we get is "<<pg->getExpire());
       if (!pg->isExpired()){
           TRACE("webpage in cahce, not expired")
           string d = pg->getData();
-          pthread_mutex_unlock(cache_mutex);
+          pthread_mutex_unlock(&cache_mutex);
           return d;
       }
       else{
           if (pg->getETag() != "") {
               TRACE("try to use ETag")
               req.AddHeader("If-Non-Match", pg->getETag());
-              pthread_mutex_unlock(cache_mutex);
           }
           else if(pg->getLastModify() !=""){
               TRACE("try to use last modify")
               req.AddHeader("If-Modified-Since", pg->getLastModify());
-              pthread_mutex_unlock(cache_mutex);
           }
+          pthread_mutex_unlock(&cache_mutex);
           return fetchResponse(req);
       }
     }
     else{
-        pthread_mutex_unlock(cache_mutex);
+        pthread_mutex_unlock(&cache_mutex);
         TRACE("directly fetch");
         return fetchResponse(req);
     }
