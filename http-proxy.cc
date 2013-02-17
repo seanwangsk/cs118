@@ -137,31 +137,24 @@ private:time_t expireTime;
 class Cache{
 public:
     Webpage* get(string url){
-        pthread_mutex_lock(cache_mutex);
         map<string,Webpage>::iterator it;
         it = storage.find(url);
         if(it == storage.end()){
-            pthread_mutex_unlock(cache_mutex);
             return NULL;
         }
         else{
-            pthread_mutex_unlock(cache_mutex);
             return &it->second;
         }
     }
     
     void add(string url, Webpage pg){
         //storage[url]= pg;
-        pthread_mutex_lock(cache_mutex);
         storage.erase(url);
         storage.insert(map<string, Webpage>::value_type(url, pg));
-        pthread_mutex_unlock(cache_mutex);
     }
     
     void remove(string url){
-        pthread_mutex_lock(cache_mutex);
         storage.erase(url);
-        pthread_mutex_unlock(cache_mutex);
     }
     
 private:
@@ -344,20 +337,28 @@ string fetchResponse(HttpRequest req){
                 time_t  expire_t = convertTime(date) + maxAge;
                 TRACE("add to cache with cache control");
                 Webpage pg(expire_t, lastModi, ETag, data);
+                pthread_mutex_lock(cache_mutex);
                 cache.add(url, pg);
+                pthread_mutex_unlock(cache_mutex);
             }
             else{   //cache not enable
                 TRACE("cache control deny");
+                pthread_mutex_lock(cache_mutex);
                 cache.remove(url);
+                pthread_mutex_unlock(cache_mutex);
             }
         }
         else{ //cache not enable
             TRACE("no info for cache");
+            pthread_mutex_lock(cache_mutex);
             cache.remove(url);
+            pthread_mutex_unlock(cache_mutex);
         }
     }
     else if(statusCode == "304"){ //content not changed
+        pthread_mutex_lock(cache_mutex);
         data = cache.get(url)->getData();
+        pthread_mutex_unlock(cache_mutex);
         TRACE(304)
     }
     close(sock_fetch);
@@ -369,27 +370,32 @@ string getResponse(HttpRequest req){
     ss<< req.GetHost()<<":"<<req.GetPort()<<req.GetPath();
     string url = ss.str();
     TRACE("url is "<<url);
-    
+    pthread_mutex_lock(cache_mutex);
     Webpage* pg = cache.get(url);
     if(pg!=NULL){
       TRACE("webpage in cache we get is "<<pg->getExpire());
       if (!pg->isExpired()){
           TRACE("webpage in cahce, not expired")
-          return pg->getData();
+          string d = pg->getData();
+          pthread_mutex_unlock(cache_mutex);
+          return d;
       }
       else{
           if (pg->getETag() != "") {
               TRACE("try to use ETag")
               req.AddHeader("If-Non-Match", pg->getETag());
+              pthread_mutex_unlock(cache_mutex);
           }
           else if(pg->getLastModify() !=""){
               TRACE("try to use last modify")
               req.AddHeader("If-Modified-Since", pg->getLastModify());
+              pthread_mutex_unlock(cache_mutex);
           }
           return fetchResponse(req);
       }
     }
     else{
+        pthread_mutex_unlock(cache_mutex);
         TRACE("directly fetch");
         return fetchResponse(req);
     }
